@@ -1,0 +1,220 @@
+/* --- ステップインジケーター --- */
+.contact-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+}
+.contact-steps .step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    color: #aaa;
+    font-size: .9rem;
+}
+.contact-steps .step.active .step-num {
+    background: #c8a96e;
+    color: #fff;
+}
+.contact-steps .step.done .step-num {
+    background: #999;
+    color: #fff;
+}
+.contact-steps .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #ddd;
+    font-weight: bold;
+    font-size: .85rem;
+    transition: background .3s;
+}
+.contact-steps .step.active .step-label {
+    color: #333;
+    font-weight: bold;
+}
+.contact-steps .step-arrow {
+    font-size: 1.4rem;
+    color: #ccc;
+    padding: 0 4px;
+}
+
+/* --- フォームフィールド共通 --- */
+.contact-form {
+    max-width: 720px;
+    margin: 0 auto;
+}
+.contact-field {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 0 24px;
+    align-items: start;
+    padding: 18px 0;
+    border-bottom: 1px solid #eee;
+}
+.contact-field label {
+    font-weight: 600;
+    font-size: .95rem;
+    padding-top: 8px;
+    color: #555;
+}
+.contact-field input[type="text"],
+.contact-field input[type="tel"],
+.contact-field input[type="email"],
+.contact-field select,
+.contact-field textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-family: inherit;
+    transition: border-color .2s;
+    background: #fff;
+}
+.contact-field input:focus,
+.contact-field select:focus,
+.contact-field textarea:focus {
+    border-color: #c8a96e;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(200,169,110,.15);
+}
+.contact-field.has-error input,
+.contact-field.has-error select,
+.contact-field.has-error textarea {
+    border-color: #dc3545;
+}
+.field-error {
+    grid-column: 2;
+    color: #dc3545;
+    font-size: .85rem;
+    margin: 4px 0 0;
+}
+.required {
+    color: #dc3545;
+    margin-left: 3px;
+}
+
+/* --- プライバシー --- */
+.contact-privacy {
+    max-width: 720px;
+    margin: 24px auto 0;
+}
+.privacy-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+.privacy-check a {
+    color: #c8a96e;
+    text-decoration: underline;
+}
+
+/* --- ボタン --- */
+.contact-submit {
+    max-width: 720px;
+    margin: 32px auto 0;
+    text-align: center;
+}
+.btn-contact-submit {
+    display: inline-block;
+    padding: 14px 48px;
+    background: #c8a96e;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-weight: bold;
+    letter-spacing: .08em;
+    cursor: pointer;
+    transition: background .2s, transform .15s;
+    text-decoration: none;
+}
+.btn-contact-submit:hover {
+    background: #b8914e;
+    transform: translateY(-1px);
+}
+.btn-contact-back {
+    display: inline-block;
+    padding: 14px 40px;
+    background: #fff;
+    color: #666;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background .2s;
+    text-decoration: none;
+}
+.btn-contact-back:hover {
+    background: #f5f5f5;
+}
+
+/* --- 確認画面テーブル --- */
+.contact-confirm-table {
+    max-width: 720px;
+    margin: 0 auto;
+    border-top: 1px solid #eee;
+}
+.confirm-row {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 0 24px;
+    padding: 16px 0;
+    border-bottom: 1px solid #eee;
+}
+.confirm-row dt {
+    font-weight: 600;
+    color: #555;
+    font-size: .95rem;
+}
+.confirm-row dd {
+    margin: 0;
+    word-break: break-all;
+}
+.contact-confirm-actions {
+    max-width: 720px;
+    margin: 32px auto 0;
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+/* --- 完了画面 --- */
+.contact-complete .complete-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #c8a96e;
+    color: #fff;
+    font-size: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+}
+
+/* --- レスポンシブ --- */
+@media (max-width: 600px) {
+    .contact-field {
+        grid-template-columns: 1fr;
+        gap: 6px 0;
+    }
+    .field-error {
+        grid-column: 1;
+    }
+    .confirm-row {
+        grid-template-columns: 1fr;
+        gap: 4px 0;
+    }
+    .contact-steps .step {
+        padding: 10px 12px;
+        font-size: .8rem;
+    }
+}

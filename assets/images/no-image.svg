@@ -1,0 +1,9 @@
+<svg width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <rect width="800" height="600" fill="#1e2d3d"/>
+  <rect x="280" y="190" width="240" height="170" rx="6" fill="none" stroke="#3a5068" stroke-width="2.5"/>
+  <rect x="305" y="210" width="85" height="65" rx="4" fill="#3a5068"/>
+  <polygon points="280,360 340,275 390,318 445,260 520,360" fill="#2e4358"/>
+  <circle cx="448" cy="228" r="17" fill="#3a5068"/>
+  <line x1="280" y1="360" x2="520" y2="360" stroke="#3a5068" stroke-width="2"/>
+  <text x="400" y="415" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#5a7a94" letter-spacing="4">NO IMAGE</text>
+</svg>
