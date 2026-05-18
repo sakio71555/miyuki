@@ -68,6 +68,18 @@ function miyuki_is_yoast_active() {
   return defined('WPSEO_VERSION') || class_exists('WPSEO_Options');
 }
 
+function miyuki_google_site_verification_code() {
+  return 'bx8pva5jx_WLYV6iImnVjJMrXiddVPc9OXPa6Zr0AWM';
+}
+
+add_action('wp_head', function() {
+  if (is_admin()) {
+    return;
+  }
+
+  echo "\n" . '<meta name="google-site-verification" content="' . esc_attr(miyuki_google_site_verification_code()) . '">' . "\n";
+}, 1);
+
 function miyuki_schema_logo_url() {
   return get_stylesheet_directory_uri() . '/assets/images/02.png';
 }
