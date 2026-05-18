@@ -64,6 +64,10 @@ function miyuki_default_description() {
   return '広島市東区曙の有限会社ミユキハウジング。建築工事、住宅・店舗のリフォーム、建物清掃、メンテナンスまで暮らしと建物を支えます。';
 }
 
+function miyuki_is_yoast_active() {
+  return defined('WPSEO_VERSION') || class_exists('WPSEO_Options');
+}
+
 function miyuki_seo_page_map() {
   return [
     'concept' => [
@@ -189,7 +193,7 @@ function miyuki_current_seo_data() {
 }
 
 add_filter('pre_get_document_title', function() {
-  if (is_admin()) {
+  if (is_admin() || miyuki_is_yoast_active()) {
     return null;
   }
   $seo = miyuki_current_seo_data();
@@ -197,7 +201,7 @@ add_filter('pre_get_document_title', function() {
 });
 
 add_action('wp_head', function() {
-  if (is_admin()) {
+  if (is_admin() || miyuki_is_yoast_active()) {
     return;
   }
 
@@ -334,7 +338,7 @@ function miyuki_breadcrumb_items() {
 }
 
 add_action('wp_head', function() {
-  if (is_admin()) {
+  if (is_admin() || miyuki_is_yoast_active()) {
     return;
   }
 
@@ -392,6 +396,99 @@ add_action('wp_head', function() {
     echo "\n" . '<script type="application/ld+json">' . wp_json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>' . "\n";
   }
 }, 20);
+
+add_filter('wpseo_title', function($title) {
+  if (is_admin()) {
+    return $title;
+  }
+  $seo = miyuki_current_seo_data();
+  return $seo['title'];
+});
+
+add_filter('wpseo_metadesc', function($description) {
+  if (is_admin()) {
+    return $description;
+  }
+  $seo = miyuki_current_seo_data();
+  return $seo['description'];
+});
+
+add_filter('wpseo_canonical', function($canonical) {
+  if (is_admin()) {
+    return $canonical;
+  }
+  return miyuki_canonical_url();
+});
+
+add_filter('wpseo_opengraph_title', function($title) {
+  if (is_admin()) {
+    return $title;
+  }
+  $seo = miyuki_current_seo_data();
+  return $seo['title'];
+});
+
+add_filter('wpseo_opengraph_desc', function($description) {
+  if (is_admin()) {
+    return $description;
+  }
+  $seo = miyuki_current_seo_data();
+  return $seo['description'];
+});
+
+add_filter('wpseo_twitter_title', function($title) {
+  if (is_admin()) {
+    return $title;
+  }
+  $seo = miyuki_current_seo_data();
+  return $seo['title'];
+});
+
+add_filter('wpseo_twitter_description', function($description) {
+  if (is_admin()) {
+    return $description;
+  }
+  $seo = miyuki_current_seo_data();
+  return $seo['description'];
+});
+
+add_filter('wpseo_schema_graph', function($graph, $context) {
+  if (is_admin() || !(is_front_page() || is_home())) {
+    return $graph;
+  }
+
+  $graph[] = [
+    '@type' => ['LocalBusiness', 'HomeAndConstructionBusiness'],
+    '@id' => home_url('/#localbusiness'),
+    'name' => miyuki_site_brand(),
+    'url' => home_url('/'),
+    'telephone' => '082-263-8066',
+    'email' => 'm_mentenansu.i@helen.ocn.ne.jp',
+    'description' => miyuki_default_description(),
+    'image' => get_stylesheet_directory_uri() . '/assets/images/12.jpg',
+    'address' => [
+      '@type' => 'PostalAddress',
+      'postalCode' => '732-0045',
+      'addressRegion' => '広島県',
+      'addressLocality' => '広島市東区',
+      'streetAddress' => '曙5丁目4-6',
+      'addressCountry' => 'JP',
+    ],
+    'areaServed' => [
+      [
+        '@type' => 'City',
+        'name' => '広島市',
+      ],
+      [
+        '@type' => 'AdministrativeArea',
+        'name' => '広島県',
+      ],
+    ],
+    'knowsAbout' => ['建築工事', 'リフォーム', '建物清掃', '建物メンテナンス'],
+  ];
+
+  return $graph;
+}, 10, 2);
 
 
 /* ============================================================
