@@ -68,6 +68,14 @@ function miyuki_is_yoast_active() {
   return defined('WPSEO_VERSION') || class_exists('WPSEO_Options');
 }
 
+function miyuki_schema_logo_url() {
+  return get_stylesheet_directory_uri() . '/assets/images/02.png';
+}
+
+add_filter('get_site_icon_url', function($url, $size, $blog_id) {
+  return miyuki_schema_logo_url();
+}, 10, 3);
+
 function miyuki_seo_page_map() {
   return [
     'concept' => [
@@ -456,6 +464,31 @@ add_filter('wpseo_schema_graph', function($graph, $context) {
   if (is_admin() || !(is_front_page() || is_home())) {
     return $graph;
   }
+
+  $logo_url = miyuki_schema_logo_url();
+
+  foreach ($graph as &$schema) {
+    if (($schema['@type'] ?? '') !== 'Organization') {
+      continue;
+    }
+
+    $schema['name'] = miyuki_site_brand();
+    $schema['url'] = home_url('/');
+    $schema['logo'] = [
+      '@type' => 'ImageObject',
+      '@id' => home_url('/#/schema/logo/image/'),
+      'url' => $logo_url,
+      'contentUrl' => $logo_url,
+      'width' => 334,
+      'height' => 374,
+      'caption' => miyuki_site_brand(),
+      'inLanguage' => 'ja',
+    ];
+    $schema['image'] = [
+      '@id' => home_url('/#/schema/logo/image/'),
+    ];
+  }
+  unset($schema);
 
   $graph[] = [
     '@type' => ['LocalBusiness', 'HomeAndConstructionBusiness'],
