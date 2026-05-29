@@ -521,7 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const lightbox = document.querySelector('.voice-lightbox');
   const lightboxImage = lightbox ? lightbox.querySelector('img') : null;
   const closeButton = lightbox ? lightbox.querySelector('.voice-lightbox-close') : null;
-  const galleryItems = document.querySelectorAll('.voice-gallery-item[data-full-src]');
+  const galleryItems = document.querySelectorAll('.voice-gallery-item[data-full-src], .works-gallery-trigger[data-full-src]');
 
   if (!lightbox || !lightboxImage || !galleryItems.length) {
     return;

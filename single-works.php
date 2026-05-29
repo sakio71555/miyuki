@@ -72,10 +72,18 @@
           <?php foreach ($gallery_ids as $gallery_id) : ?>
             <?php if (wp_attachment_is_image($gallery_id)) : ?>
               <figure class="works-gallery-item">
-                <?php echo wp_get_attachment_image($gallery_id, 'large', false, ['loading' => 'lazy']); ?>
+                <button type="button" class="works-gallery-trigger" data-full-src="<?php echo esc_url(wp_get_attachment_image_url($gallery_id, 'full')); ?>" data-alt="<?php echo esc_attr(get_post_meta($gallery_id, '_wp_attachment_image_alt', true) ?: get_the_title($gallery_id)); ?>">
+                  <?php echo wp_get_attachment_image($gallery_id, 'large', false, ['loading' => 'lazy']); ?>
+                </button>
               </figure>
             <?php endif; ?>
           <?php endforeach; ?>
+        </div>
+        <div class="voice-lightbox works-lightbox" role="dialog" aria-modal="true" aria-hidden="true">
+          <button type="button" class="voice-lightbox-close" aria-label="閉じる">×</button>
+          <div class="voice-lightbox-inner">
+            <img src="" alt="">
+          </div>
         </div>
       <?php endif; ?>
 

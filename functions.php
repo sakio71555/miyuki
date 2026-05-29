@@ -670,6 +670,28 @@ function miyuki_register_post_types() {
     'show_in_rest'  => true,
   ]);
 
+  // お客様アンケート（公開ページには出さず、管理画面専用で扱う）
+  register_post_type('voice_survey', [
+    'labels' => [
+      'name'               => 'お客様アンケート',
+      'singular_name'      => 'お客様アンケート',
+      'add_new'            => '新規追加',
+      'add_new_item'       => 'アンケートを追加',
+      'edit_item'          => 'アンケートを編集',
+      'new_item'           => '新規アンケート',
+      'view_item'          => 'アンケートを表示',
+      'not_found'          => 'アンケートが見つかりません',
+      'not_found_in_trash' => 'ゴミ箱にアンケートはありません',
+    ],
+    'public'              => false,
+    'publicly_queryable'  => false,
+    'show_ui'             => false,
+    'show_in_menu'        => false,
+    'exclude_from_search' => true,
+    'supports'            => ['title', 'custom-fields'],
+    'show_in_rest'        => false,
+  ]);
+
 }
 add_action('init', 'miyuki_register_post_types');
 
@@ -1177,8 +1199,18 @@ function miyuki_enable_works_customer_preview($post_id) {
 }
 
 function miyuki_production_home_url($path = '/') {
-  return 'https://miyuki-housing.jp' . '/' . ltrim($path, '/');
+  return 'https://miyuki-housing.jp/miyuki-test' . '/' . ltrim($path, '/');
 }
+
+function miyuki_allow_mobile_image_upload_mimes($mimes) {
+  $mimes['heic'] = 'image/heic';
+  $mimes['heif'] = 'image/heif';
+  $mimes['heics'] = 'image/heic-sequence';
+  $mimes['heifs'] = 'image/heif-sequence';
+
+  return $mimes;
+}
+add_filter('upload_mimes', 'miyuki_allow_mobile_image_upload_mimes');
 
 function miyuki_works_customer_preview_url($post_id) {
   $post_id = absint($post_id);
@@ -1723,6 +1755,8 @@ function miyuki_enqueue_works_admin_assets($hook) {
     'miyuki-event-easy-list',
     'miyuki-voice-easy-new',
     'miyuki-voice-easy-list',
+    'miyuki-voice-surveys',
+    'miyuki-voice-survey-list',
   ];
   $is_supported_editor = in_array($hook, ['post.php', 'post-new.php'], true) && in_array($post_type, ['works', 'staff', 'news', 'event', 'voice'], true);
   $is_easy_page        = isset($_GET['page']) && in_array($_GET['page'], $easy_pages, true);
@@ -3746,6 +3780,7 @@ function miyuki_render_voice_easy_notices() {
   $created_id = isset($_GET['created']) ? absint($_GET['created']) : 0;
   $updated_id = isset($_GET['updated']) ? absint($_GET['updated']) : 0;
   $error      = isset($_GET['miyuki_error']) ? sanitize_key($_GET['miyuki_error']) : '';
+  $survey_message = isset($_GET['miyuki_survey_message']) ? sanitize_key($_GET['miyuki_survey_message']) : '';
 
   if ($created_id) : ?>
     <div class="notice notice-success is-dismissible">
@@ -3757,6 +3792,10 @@ function miyuki_render_voice_easy_notices() {
     <div class="notice notice-success is-dismissible">
       <p>お客様の声を更新しました。<a href="<?php echo esc_url(get_permalink($updated_id)); ?>" target="_blank" rel="noopener">表示を確認</a></p>
     </div>
+  <?php endif;
+
+  if ($survey_message === 'converted') : ?>
+    <div class="notice notice-success is-dismissible"><p>アンケート回答から「お客様の声」の下書きを作成しました。内容を確認して保存してください。</p></div>
   <?php endif;
 
   if ($error === 'title') : ?>
@@ -4198,6 +4237,1618 @@ add_filter('post_row_actions', function($actions, $post) {
   $actions = ['miyuki_easy_edit' => '<a href="' . esc_url(miyuki_voice_easy_edit_url($post->ID)) . '">かんたん編集</a>'] + $actions;
   return $actions;
 }, 10, 2);
+
+
+/* ============================================================
+   お客様アンケート
+   ============================================================ */
+function miyuki_voice_survey_meta_key($key) {
+  return '_miyuki_survey_' . sanitize_key($key);
+}
+
+function miyuki_voice_survey_image_meta_key($key) {
+  return '_miyuki_survey_' . sanitize_key($key) . '_image_ids';
+}
+
+function miyuki_voice_survey_meta($post_id, $key, $default = '') {
+  $value = get_post_meta($post_id, miyuki_voice_survey_meta_key($key), true);
+  return $value !== '' ? $value : $default;
+}
+
+function miyuki_voice_survey_bool($post_id, $key) {
+  return miyuki_voice_survey_meta($post_id, $key) === '1';
+}
+
+function miyuki_voice_survey_default_questions() {
+  $questions = [];
+
+  foreach (miyuki_voice_question_labels() as $key => $label) {
+    $questions[] = [
+      'key'   => $key,
+      'label' => $label,
+    ];
+  }
+
+  return $questions;
+}
+
+function miyuki_sanitize_voice_survey_questions($labels, $existing_questions = [], $keys = []) {
+  $questions = [];
+  $existing_keys = [];
+  $used_keys = [];
+
+  foreach ($existing_questions as $index => $question) {
+    if (!empty($question['key'])) {
+      $existing_keys[$index] = sanitize_key($question['key']);
+    }
+  }
+
+  if (!is_array($labels)) {
+    $labels = [];
+  }
+
+  if (!is_array($keys)) {
+    $keys = [];
+  }
+
+  foreach (array_values($labels) as $index => $label) {
+    $label = sanitize_text_field(wp_unslash($label));
+    if ($label === '') {
+      continue;
+    }
+
+    $key = isset($keys[$index]) ? sanitize_key(wp_unslash($keys[$index])) : '';
+    if ($key === '') {
+      $key = $existing_keys[$index] ?? '';
+    }
+    if ($key === '') {
+      $key = 'q' . ($index + 1);
+    }
+
+    $base_key = $key;
+    $suffix = 2;
+    while (in_array($key, $used_keys, true)) {
+      $key = $base_key . '_' . $suffix;
+      $suffix++;
+    }
+    $used_keys[] = $key;
+
+    $questions[] = [
+      'key'   => sanitize_key($key),
+      'label' => $label,
+    ];
+
+    if (count($questions) >= 12) {
+      break;
+    }
+  }
+
+  return !empty($questions) ? $questions : miyuki_voice_survey_default_questions();
+}
+
+function miyuki_get_voice_survey_questions($post_id) {
+  $raw = get_post_meta($post_id, '_miyuki_survey_questions', true);
+  if ($raw) {
+    $decoded = json_decode($raw, true);
+    if (is_array($decoded)) {
+      $questions = [];
+      foreach ($decoded as $question) {
+        $key = isset($question['key']) ? sanitize_key($question['key']) : '';
+        $label = isset($question['label']) ? sanitize_text_field($question['label']) : '';
+        if ($key !== '' && $label !== '') {
+          $questions[] = [
+            'key'   => $key,
+            'label' => $label,
+          ];
+        }
+      }
+
+      if (!empty($questions)) {
+        return $questions;
+      }
+    }
+  }
+
+  return miyuki_voice_survey_default_questions();
+}
+
+function miyuki_save_voice_survey_questions($post_id, $questions) {
+  update_post_meta($post_id, '_miyuki_survey_questions', wp_json_encode(array_values($questions), JSON_UNESCAPED_UNICODE));
+}
+
+function miyuki_get_voice_survey_question_image_ids($post_id, $key) {
+  return miyuki_parse_voice_image_ids(get_post_meta($post_id, miyuki_voice_survey_image_meta_key($key), true));
+}
+
+function miyuki_get_voice_survey_gallery_ids($post_id) {
+  return miyuki_parse_voice_image_ids(get_post_meta($post_id, '_miyuki_survey_gallery_ids', true));
+}
+
+function miyuki_voice_survey_public_url($token) {
+  return add_query_arg('miyuki_survey', rawurlencode($token), miyuki_production_home_url('/'));
+}
+
+function miyuki_voice_survey_url_is_active($post_id) {
+  $post_id = absint($post_id);
+  $token = miyuki_voice_survey_meta($post_id, 'token');
+  return $token !== '' && miyuki_voice_survey_meta($post_id, 'url_disabled') !== '1';
+}
+
+function miyuki_voice_survey_form_is_open($post_id) {
+  $post_id = absint($post_id);
+  if (!miyuki_voice_survey_url_is_active($post_id)) {
+    return false;
+  }
+
+  $submitted_at = miyuki_voice_survey_meta($post_id, 'submitted_at');
+  if ($submitted_at === '') {
+    return true;
+  }
+
+  $reissued_at = miyuki_voice_survey_meta($post_id, 'reissued_at');
+  return $reissued_at !== '' && strtotime($reissued_at) >= strtotime($submitted_at);
+}
+
+function miyuki_disable_voice_survey_url($post_id) {
+  $post_id = absint($post_id);
+  delete_post_meta($post_id, '_miyuki_survey_token');
+  update_post_meta($post_id, '_miyuki_survey_url_disabled', '1');
+}
+
+function miyuki_reissue_voice_survey_url($post_id) {
+  $post_id = absint($post_id);
+  $token = wp_generate_password(32, false, false);
+  update_post_meta($post_id, '_miyuki_survey_token', $token);
+  delete_post_meta($post_id, '_miyuki_survey_url_disabled');
+  update_post_meta($post_id, '_miyuki_survey_reissued_at', current_time('mysql'));
+
+  return $token;
+}
+
+function miyuki_voice_survey_admin_create_url() {
+  return admin_url('admin.php?page=miyuki-voice-surveys');
+}
+
+function miyuki_voice_survey_admin_list_url() {
+  return admin_url('admin.php?page=miyuki-voice-survey-list');
+}
+
+function miyuki_voice_survey_admin_detail_url($survey_id) {
+  return add_query_arg('survey_id', absint($survey_id), miyuki_voice_survey_admin_create_url());
+}
+
+function miyuki_voice_survey_print_sheet_url($survey_id) {
+  $survey_id = absint($survey_id);
+  return wp_nonce_url(
+    add_query_arg([
+      'action'    => 'miyuki_voice_survey_print_sheet',
+      'survey_id' => $survey_id,
+    ], admin_url('admin-post.php')),
+    'miyuki_voice_survey_print_sheet_' . $survey_id
+  );
+}
+
+function miyuki_get_voice_survey_by_token($token) {
+  $token = sanitize_text_field($token);
+  if ($token === '') {
+    return null;
+  }
+
+  $query = new WP_Query([
+    'post_type'      => 'voice_survey',
+    'post_status'    => ['draft', 'pending', 'private', 'publish'],
+    'posts_per_page' => 1,
+    'meta_key'       => '_miyuki_survey_token',
+    'meta_value'     => $token,
+    'no_found_rows'  => true,
+  ]);
+
+  if (!$query->have_posts()) {
+    return null;
+  }
+
+  return $query->posts[0];
+}
+
+function miyuki_create_voice_survey_post($data = []) {
+  $token = wp_generate_password(32, false, false);
+  $title = isset($data['title']) ? sanitize_text_field($data['title']) : '';
+  if ($title === '') {
+    $title = 'アンケート ' . current_time('Y.m.d H:i');
+  }
+
+  $post_id = wp_insert_post([
+    'post_type'   => 'voice_survey',
+    'post_status' => 'draft',
+    'post_title'  => $title,
+  ], true);
+
+  if (is_wp_error($post_id)) {
+    return $post_id;
+  }
+
+  $intro = isset($data['intro']) ? sanitize_textarea_field($data['intro']) : '';
+  $questions = isset($data['questions']) && is_array($data['questions']) ? $data['questions'] : miyuki_voice_survey_default_questions();
+  update_post_meta($post_id, '_miyuki_survey_token', $token);
+  update_post_meta($post_id, '_miyuki_survey_created_at', current_time('mysql'));
+  update_post_meta($post_id, '_miyuki_survey_intro', $intro);
+  miyuki_save_voice_survey_questions($post_id, $questions);
+
+  return absint($post_id);
+}
+
+function miyuki_add_voice_survey_admin_menu() {
+  add_menu_page(
+    'お客様アンケート',
+    'お客様アンケート',
+    'edit_posts',
+    'miyuki-voice-surveys',
+    'miyuki_render_voice_survey_admin_page',
+    'dashicons-clipboard',
+    9
+  );
+
+  add_submenu_page(
+    'miyuki-voice-surveys',
+    'アンケート制作',
+    'アンケート制作',
+    'edit_posts',
+    'miyuki-voice-surveys',
+    'miyuki_render_voice_survey_admin_page'
+  );
+
+  add_submenu_page(
+    'miyuki-voice-surveys',
+    'アンケート一覧',
+    'アンケート一覧',
+    'edit_posts',
+    'miyuki-voice-survey-list',
+    'miyuki_render_voice_survey_admin_page'
+  );
+}
+add_action('admin_menu', 'miyuki_add_voice_survey_admin_menu');
+
+function miyuki_voice_survey_status_label($post_id) {
+  $converted_voice_id = absint(miyuki_voice_survey_meta($post_id, 'converted_voice_id'));
+  if ($converted_voice_id && get_post_type($converted_voice_id) === 'voice') {
+    return ['label' => '声作成済み', 'class' => 'converted'];
+  }
+
+  $submitted_at = miyuki_voice_survey_meta($post_id, 'submitted_at');
+  if ($submitted_at && miyuki_voice_survey_url_is_active($post_id)) {
+    if (miyuki_voice_survey_form_is_open($post_id)) {
+      return ['label' => '再回答待ち', 'class' => 'reissued'];
+    }
+  }
+
+  if ($submitted_at) {
+    return ['label' => '回答済み', 'class' => 'submitted'];
+  }
+
+  if (!miyuki_voice_survey_url_is_active($post_id)) {
+    return ['label' => 'URL停止', 'class' => 'stopped'];
+  }
+
+  return ['label' => '回答待ち', 'class' => 'waiting'];
+}
+
+function miyuki_render_voice_survey_permission_badge($allowed, $label) {
+  $class = $allowed ? 'is-allowed' : 'is-denied';
+  $text  = $allowed ? $label . ' OK' : $label . ' なし';
+  return '<span class="miyuki-survey-permission ' . esc_attr($class) . '">' . esc_html($text) . '</span>';
+}
+
+function miyuki_render_voice_survey_admin_page() {
+  if (!current_user_can('edit_posts')) {
+    wp_die('このページを表示する権限がありません。');
+  }
+
+  echo '<div class="wrap miyuki-works-easy-page miyuki-survey-admin-page">';
+  $current_page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
+
+  if (!empty($_GET['survey_id'])) {
+    miyuki_render_voice_survey_detail_page(absint($_GET['survey_id']));
+    echo '</div>';
+    return;
+  }
+
+  if ($current_page === 'miyuki-voice-survey-list' || (isset($_GET['survey_action']) && sanitize_key($_GET['survey_action']) === 'list')) {
+    miyuki_render_voice_survey_list_page();
+    echo '</div>';
+    return;
+  }
+
+  miyuki_render_voice_survey_create_page();
+  echo '</div>';
+}
+
+function miyuki_render_voice_survey_list_page() {
+  miyuki_render_works_easy_header('お客様アンケート', '作成したアンケートと回答状況を一覧で確認できます。内容編集やURL確認は各アンケートのページで行います。', [
+    ['label' => 'アンケートを作成', 'url' => miyuki_voice_survey_admin_create_url(), 'primary' => true],
+  ], 'VOICE SURVEY');
+  miyuki_render_voice_survey_admin_notices();
+  miyuki_render_voice_survey_list();
+}
+
+function miyuki_render_voice_survey_admin_notices() {
+  $message = isset($_GET['miyuki_survey_message']) ? sanitize_key($_GET['miyuki_survey_message']) : '';
+  $error   = isset($_GET['miyuki_survey_error']) ? sanitize_key($_GET['miyuki_survey_error']) : '';
+
+  if ($message === 'created') : ?>
+    <div class="notice notice-success is-dismissible"><p>アンケート内容と回答URLを作成しました。お客様へURLを共有できます。</p></div>
+  <?php elseif ($message === 'updated') : ?>
+    <div class="notice notice-success is-dismissible"><p>アンケート内容を更新しました。</p></div>
+  <?php elseif ($message === 'converted') : ?>
+    <div class="notice notice-success is-dismissible"><p>アンケート回答から「お客様の声」の下書きを作成しました。</p></div>
+  <?php elseif ($message === 'reissued') : ?>
+    <div class="notice notice-success is-dismissible"><p>お客様用の回答URLを再発行しました。新しいURLを共有してください。</p></div>
+  <?php elseif ($message === 'disabled') : ?>
+    <div class="notice notice-success is-dismissible"><p>お客様用の回答URLを無効にしました。必要な場合はこのページから再発行できます。</p></div>
+  <?php endif;
+
+  if ($error === 'convert_permission') : ?>
+    <div class="notice notice-error is-dismissible"><p>HP掲載許可がないため、「お客様の声」には変換できません。</p></div>
+  <?php elseif ($error === 'save') : ?>
+    <div class="notice notice-error is-dismissible"><p>保存できませんでした。もう一度お試しください。</p></div>
+  <?php endif;
+}
+
+function miyuki_render_voice_survey_content_fields($survey_id = 0) {
+  $post = $survey_id ? get_post($survey_id) : null;
+  $title = $post ? $post->post_title : '';
+  $intro = $survey_id ? miyuki_voice_survey_meta($survey_id, 'intro') : 'ご回答内容は確認後に社内で管理します。許可なくホームページに公開されることはありません。';
+  $questions = $survey_id ? miyuki_get_voice_survey_questions($survey_id) : miyuki_voice_survey_default_questions();
+  ?>
+  <div class="miyuki-survey-builder-guide">
+    <div><span>1</span><strong>タイトルを入れる</strong><small>社内で見分けやすい名前</small></div>
+    <div><span>2</span><strong>設問を整える</strong><small>追加・削除できます</small></div>
+    <div><span>3</span><strong>URLを送る</strong><small>回答は公開されません</small></div>
+  </div>
+
+  <div class="miyuki-works-field">
+    <label for="miyuki_survey_title">管理用タイトル</label>
+    <input type="text" id="miyuki_survey_title" name="miyuki_survey_title" required value="<?php echo esc_attr($title); ?>" placeholder="例：新築完成後アンケート / K様">
+    <p class="description">管理画面の一覧に表示されます。お客様にも回答ページ上部で表示されます。</p>
+  </div>
+
+  <div class="miyuki-works-field">
+    <label for="miyuki_survey_intro">お客様への説明文</label>
+    <textarea id="miyuki_survey_intro" name="miyuki_survey_intro" rows="3" placeholder="例：今後の住まいづくりの参考にさせていただくため、率直なご感想をお聞かせください。"><?php echo esc_textarea($intro); ?></textarea>
+  </div>
+
+  <div class="miyuki-survey-question-builder" data-next-index="<?php echo esc_attr(count($questions) + 1); ?>">
+    <div class="miyuki-survey-question-builder-head">
+      <div>
+        <h3>設問</h3>
+        <p>聞きたい内容だけ残してください。右上の削除で減らせます。</p>
+      </div>
+      <button type="button" class="button miyuki-survey-question-add">設問を追加</button>
+    </div>
+
+    <div class="miyuki-survey-question-list-edit">
+      <?php foreach ($questions as $index => $question) : ?>
+        <?php
+        $question_key = sanitize_key($question['key'] ?? ('q' . ($index + 1)));
+        $label = $question['label'] ?? '';
+        ?>
+        <div class="miyuki-survey-question-edit-card">
+          <div class="miyuki-survey-question-edit-head">
+            <span>設問 <?php echo esc_html($index + 1); ?></span>
+            <button type="button" class="button-link-delete miyuki-survey-question-remove">削除</button>
+          </div>
+          <input type="hidden" name="miyuki_survey_question_keys[]" value="<?php echo esc_attr($question_key); ?>">
+          <div class="miyuki-works-field">
+            <label for="miyuki_survey_question_<?php echo esc_attr($index); ?>">質問文</label>
+            <input type="text" id="miyuki_survey_question_<?php echo esc_attr($index); ?>" name="miyuki_survey_question_labels[]" value="<?php echo esc_attr($label); ?>" placeholder="例：ミユキハウジングを選んだ理由">
+          </div>
+        </div>
+      <?php endforeach; ?>
+    </div>
+
+    <script type="text/template" class="miyuki-survey-question-template">
+      <div class="miyuki-survey-question-edit-card">
+        <div class="miyuki-survey-question-edit-head">
+          <span>設問 __NUMBER__</span>
+          <button type="button" class="button-link-delete miyuki-survey-question-remove">削除</button>
+        </div>
+        <input type="hidden" name="miyuki_survey_question_keys[]" value="__KEY__">
+        <div class="miyuki-works-field">
+          <label>質問文</label>
+          <input type="text" name="miyuki_survey_question_labels[]" value="" placeholder="例：ミユキハウジングを選んだ理由">
+        </div>
+      </div>
+    </script>
+
+    <button type="button" class="button miyuki-survey-question-add miyuki-survey-question-add-bottom">設問を追加</button>
+    <?php if (count($questions) <= 1) : ?>
+      <p class="miyuki-survey-question-note">設問は最低1つ必要です。</p>
+    <?php endif; ?>
+  </div>
+  <?php
+}
+
+function miyuki_render_voice_survey_create_box() {
+  ?>
+  <section class="miyuki-easy-card miyuki-survey-create-card">
+    <h2>アンケート内容を作成</h2>
+    <p>設問内容を作って保存すると、そのアンケート専用の回答URLが発行されます。</p>
+    <form class="miyuki-survey-builder-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+      <?php wp_nonce_field('miyuki_voice_survey_create', 'miyuki_voice_survey_create_nonce'); ?>
+      <input type="hidden" name="action" value="miyuki_voice_survey_create">
+      <?php miyuki_render_voice_survey_content_fields(); ?>
+      <button type="submit" class="button button-primary button-hero">この内容で回答URLを作成</button>
+    </form>
+  </section>
+  <?php
+}
+
+function miyuki_render_voice_survey_create_page() {
+  miyuki_render_works_easy_header('アンケート作成', 'お客様に回答していただく内容を作成します。保存すると、このアンケート専用の回答URLが発行されます。', [
+    ['label' => '一覧へ戻る', 'url' => miyuki_voice_survey_admin_list_url(), 'primary' => true],
+  ], 'VOICE SURVEY');
+  miyuki_render_voice_survey_admin_notices();
+  miyuki_render_voice_survey_create_box();
+}
+
+function miyuki_render_voice_survey_list() {
+  $survey_query = new WP_Query([
+    'post_type'      => 'voice_survey',
+    'post_status'    => ['draft', 'pending', 'private', 'publish'],
+    'posts_per_page' => 80,
+    'orderby'        => 'date',
+    'order'          => 'DESC',
+  ]);
+
+  if (!$survey_query->have_posts()) : ?>
+    <div class="miyuki-easy-empty-list">
+      <p>アンケートはまだありません。</p>
+    </div>
+    <?php
+    return;
+  endif;
+  ?>
+  <section class="miyuki-survey-admin-list">
+    <?php while ($survey_query->have_posts()) : $survey_query->the_post(); ?>
+      <?php
+      $post_id   = get_the_ID();
+      $status    = miyuki_voice_survey_status_label($post_id);
+      $name      = miyuki_voice_survey_meta($post_id, 'customer_name', '未回答');
+      $area      = miyuki_voice_survey_meta($post_id, 'customer_area');
+      $submitted = miyuki_voice_survey_meta($post_id, 'submitted_at');
+      $question_count = count(miyuki_get_voice_survey_questions($post_id));
+      $detail_label = $submitted ? '回答を見る' : '編集・URL確認';
+      ?>
+      <article class="miyuki-survey-row">
+        <div>
+          <span class="miyuki-survey-status miyuki-survey-status-<?php echo esc_attr($status['class']); ?>"><?php echo esc_html($status['label']); ?></span>
+          <h2><?php echo esc_html(get_the_title()); ?></h2>
+          <p><?php echo esc_html(trim($name . ($area ? ' / ' . $area : ''))); ?></p>
+          <p class="miyuki-survey-date">
+            <?php echo esc_html($question_count . '問 / '); ?><?php echo $submitted ? esc_html('回答日：' . mysql2date('Y.m.d H:i', $submitted)) : esc_html('作成日：' . get_the_date('Y.m.d H:i')); ?>
+          </p>
+        </div>
+        <div class="miyuki-survey-row-actions">
+          <?php if (miyuki_voice_survey_url_is_active($post_id)) : ?>
+            <a class="button" href="<?php echo esc_url(miyuki_voice_survey_print_sheet_url($post_id)); ?>" target="_blank" rel="noopener">QR用紙</a>
+          <?php endif; ?>
+          <a class="button button-primary" href="<?php echo esc_url(miyuki_voice_survey_admin_detail_url($post_id)); ?>"><?php echo esc_html($detail_label); ?></a>
+        </div>
+      </article>
+    <?php endwhile; wp_reset_postdata(); ?>
+  </section>
+  <?php
+}
+
+function miyuki_render_voice_survey_detail_page($survey_id) {
+  $survey = get_post($survey_id);
+  if (!$survey || $survey->post_type !== 'voice_survey') {
+    wp_die('アンケートが見つかりません。');
+  }
+
+  $token      = miyuki_voice_survey_meta($survey_id, 'token');
+  $url_active = miyuki_voice_survey_url_is_active($survey_id);
+  $form_open  = miyuki_voice_survey_form_is_open($survey_id);
+  $url        = ($token && $url_active) ? miyuki_voice_survey_public_url($token) : '';
+  $submitted  = miyuki_voice_survey_meta($survey_id, 'submitted_at');
+  $converted  = absint(miyuki_voice_survey_meta($survey_id, 'converted_voice_id'));
+  $publish_ok = miyuki_voice_survey_bool($survey_id, 'publish_permission');
+  $photo_ok   = miyuki_voice_survey_bool($survey_id, 'photo_permission');
+  $name_ok    = miyuki_voice_survey_bool($survey_id, 'name_permission');
+  $page_title = $submitted ? 'アンケート回答' : 'アンケート編集';
+  $page_description = $submitted ? '回答内容を確認し、必要な場合だけ「お客様の声」の下書きへ変換できます。' : '設問内容を編集し、お客様へ送る回答URLを確認できます。';
+
+  miyuki_render_works_easy_header($page_title, $page_description, [
+    ['label' => '一覧へ戻る', 'url' => miyuki_voice_survey_admin_list_url(), 'primary' => true],
+  ], 'VOICE SURVEY');
+  miyuki_render_voice_survey_admin_notices();
+  ?>
+
+  <div class="miyuki-easy-layout miyuki-survey-detail-layout">
+    <div class="miyuki-easy-main">
+      <?php if (!$submitted) : ?>
+        <section class="miyuki-easy-card miyuki-survey-create-card">
+          <h2>アンケート内容</h2>
+          <p>回答が届く前であれば、設問内容を調整できます。この内容に対して下のURLが発行されています。</p>
+          <form class="miyuki-survey-builder-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <?php wp_nonce_field('miyuki_voice_survey_update_' . $survey_id, 'miyuki_voice_survey_update_nonce'); ?>
+            <input type="hidden" name="action" value="miyuki_voice_survey_update">
+            <input type="hidden" name="survey_id" value="<?php echo esc_attr($survey_id); ?>">
+            <?php miyuki_render_voice_survey_content_fields($survey_id); ?>
+            <button type="submit" class="button button-primary button-hero">アンケート内容を更新</button>
+          </form>
+        </section>
+      <?php else : ?>
+        <section class="miyuki-easy-card miyuki-survey-question-card">
+          <h2>アンケート内容</h2>
+          <p><?php echo nl2br(esc_html(miyuki_voice_survey_meta($survey_id, 'intro'))); ?></p>
+          <ol class="miyuki-survey-question-list">
+            <?php foreach (miyuki_get_voice_survey_questions($survey_id) as $question) : ?>
+              <li><?php echo esc_html($question['label']); ?></li>
+            <?php endforeach; ?>
+          </ol>
+        </section>
+      <?php endif; ?>
+
+      <section class="miyuki-easy-card">
+        <h2>お客様確認用URL</h2>
+        <?php if ($url_active && $url) : ?>
+          <?php if ($submitted && !$form_open) : ?>
+            <p>回答済みです。このURLを開くと完了画面が表示され、再回答はできません。URLを止めたい場合は手動で無効にできます。</p>
+          <?php elseif ($submitted && $form_open) : ?>
+            <p>再回答用URLとして有効です。このURLをお客様へ送ると、ログインなしで再回答できます。</p>
+          <?php else : ?>
+            <p>このURLをお客様へ送ると、ログインなしでアンケートに回答できます。</p>
+          <?php endif; ?>
+          <div class="miyuki-survey-url-copy">
+            <input type="text" readonly value="<?php echo esc_attr($url); ?>" onclick="this.select();">
+            <button type="button" class="button miyuki-survey-copy-url">URLをコピー</button>
+          </div>
+          <div class="miyuki-survey-url-actions">
+            <a class="button button-primary" href="<?php echo esc_url(miyuki_voice_survey_print_sheet_url($survey_id)); ?>" target="_blank" rel="noopener">QR付きA4用紙を表示</a>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+              <?php wp_nonce_field('miyuki_voice_survey_disable_url_' . $survey_id, 'miyuki_voice_survey_disable_url_nonce'); ?>
+              <input type="hidden" name="action" value="miyuki_voice_survey_disable_url">
+              <input type="hidden" name="survey_id" value="<?php echo esc_attr($survey_id); ?>">
+              <button type="submit" class="button miyuki-survey-disable-url-button">URLを無効にする</button>
+            </form>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+              <?php wp_nonce_field('miyuki_voice_survey_reissue_url_' . $survey_id, 'miyuki_voice_survey_reissue_url_nonce'); ?>
+              <input type="hidden" name="action" value="miyuki_voice_survey_reissue_url">
+              <input type="hidden" name="survey_id" value="<?php echo esc_attr($survey_id); ?>">
+              <button type="submit" class="button">URLを再発行</button>
+            </form>
+          </div>
+        <?php else : ?>
+          <div class="miyuki-survey-url-stopped">
+            <strong>現在、回答URLは停止中です。</strong>
+            <p><?php echo $submitted ? '手動で無効にしたURL、または未発行のURLです。再回答が必要な場合だけ再発行してください。' : '回答URLが未発行、または手動で無効になっています。必要な場合は再発行してください。'; ?></p>
+          </div>
+          <form class="miyuki-survey-reissue-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <?php wp_nonce_field('miyuki_voice_survey_reissue_url_' . $survey_id, 'miyuki_voice_survey_reissue_url_nonce'); ?>
+            <input type="hidden" name="action" value="miyuki_voice_survey_reissue_url">
+            <input type="hidden" name="survey_id" value="<?php echo esc_attr($survey_id); ?>">
+            <button type="submit" class="button">回答URLを再発行</button>
+          </form>
+        <?php endif; ?>
+      </section>
+
+      <?php if (!$submitted) : ?>
+        <section class="miyuki-easy-card miyuki-survey-waiting-card">
+          <h2>まだ回答はありません</h2>
+          <p>お客様の回答が送信されると、このページに内容が表示されます。</p>
+        </section>
+      <?php else : ?>
+        <section class="miyuki-easy-card miyuki-survey-answer-card">
+          <h2>回答内容</h2>
+          <dl class="miyuki-survey-answer-list">
+            <div><dt>お客様名</dt><dd><?php echo esc_html(miyuki_voice_survey_meta($survey_id, 'customer_name', '未入力')); ?></dd></div>
+            <div><dt>エリア</dt><dd><?php echo esc_html(miyuki_voice_survey_meta($survey_id, 'customer_area', '未入力')); ?></dd></div>
+            <div><dt>連絡先</dt><dd><?php echo esc_html(miyuki_voice_survey_meta($survey_id, 'customer_contact', '未入力')); ?></dd></div>
+            <div><dt>種別</dt><dd><?php echo esc_html(miyuki_voice_survey_meta($survey_id, 'category', '未入力')); ?></dd></div>
+            <div><dt>満足度</dt><dd><?php echo esc_html(miyuki_voice_survey_meta($survey_id, 'satisfaction', '未入力')); ?></dd></div>
+            <div><dt>一言コメント</dt><dd><?php echo nl2br(esc_html(miyuki_voice_survey_meta($survey_id, 'quote', '未入力'))); ?></dd></div>
+          </dl>
+          <div class="miyuki-survey-permissions">
+            <?php echo miyuki_render_voice_survey_permission_badge($publish_ok, 'HP掲載'); ?>
+            <?php echo miyuki_render_voice_survey_permission_badge($photo_ok, '写真掲載'); ?>
+            <?php echo miyuki_render_voice_survey_permission_badge($name_ok, '名前掲載'); ?>
+          </div>
+        </section>
+
+        <?php foreach (miyuki_get_voice_survey_questions($survey_id) as $question) : ?>
+          <?php
+          $key = sanitize_key($question['key']);
+          $label = $question['label'];
+          $answer = miyuki_voice_survey_meta($survey_id, $key);
+          $image_ids = miyuki_get_voice_survey_question_image_ids($survey_id, $key);
+          ?>
+          <section class="miyuki-easy-card miyuki-survey-question-card">
+            <h2><?php echo esc_html($label); ?></h2>
+            <p><?php echo $answer !== '' ? nl2br(esc_html($answer)) : '未入力'; ?></p>
+            <?php if (!empty($image_ids)) : ?>
+              <div class="miyuki-survey-admin-images">
+                <?php foreach ($image_ids as $image_id) : ?>
+                  <?php echo wp_get_attachment_image($image_id, 'medium'); ?>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
+          </section>
+        <?php endforeach; ?>
+
+        <?php $gallery_ids = miyuki_get_voice_survey_gallery_ids($survey_id); ?>
+        <?php if (!empty($gallery_ids)) : ?>
+          <section class="miyuki-easy-card miyuki-survey-question-card">
+            <h2>ギャラリー写真</h2>
+            <div class="miyuki-survey-admin-images">
+              <?php foreach ($gallery_ids as $image_id) : ?>
+                <?php echo wp_get_attachment_image($image_id, 'medium'); ?>
+              <?php endforeach; ?>
+            </div>
+          </section>
+        <?php endif; ?>
+      <?php endif; ?>
+    </div>
+
+    <aside class="miyuki-easy-side">
+      <div class="miyuki-easy-publish-card">
+        <h2>お客様の声へ変換</h2>
+        <?php if ($converted && get_post_type($converted) === 'voice') : ?>
+          <p>このアンケートから、すでに「お客様の声」を作成済みです。</p>
+          <a class="button button-primary button-hero" href="<?php echo esc_url(miyuki_voice_easy_edit_url($converted)); ?>">お客様の声を編集</a>
+        <?php elseif (!$submitted) : ?>
+          <p>回答が届くと、ここから「お客様の声」の下書きを作成できます。</p>
+        <?php elseif (!$publish_ok) : ?>
+          <p>HP掲載許可がないため、公開用のお客様の声には変換しません。</p>
+        <?php else : ?>
+          <p>回答内容をもとに「お客様の声」の下書きを作成します。作成後に文章や写真を調整できます。</p>
+          <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <?php wp_nonce_field('miyuki_voice_survey_convert_' . $survey_id, 'miyuki_voice_survey_convert_nonce'); ?>
+            <input type="hidden" name="action" value="miyuki_voice_survey_convert">
+            <input type="hidden" name="survey_id" value="<?php echo esc_attr($survey_id); ?>">
+            <button type="submit" class="button button-primary button-hero">下書きを作成</button>
+          </form>
+        <?php endif; ?>
+      </div>
+    </aside>
+  </div>
+  <?php
+}
+
+function miyuki_handle_voice_survey_create() {
+  if (!current_user_can('edit_posts')) {
+    wp_die('この操作を実行する権限がありません。');
+  }
+
+  if (!isset($_POST['miyuki_voice_survey_create_nonce']) || !wp_verify_nonce($_POST['miyuki_voice_survey_create_nonce'], 'miyuki_voice_survey_create')) {
+    wp_die('不正な送信です。');
+  }
+
+  $questions = miyuki_sanitize_voice_survey_questions($_POST['miyuki_survey_question_labels'] ?? [], [], $_POST['miyuki_survey_question_keys'] ?? []);
+  $post_id = miyuki_create_voice_survey_post([
+    'title'     => isset($_POST['miyuki_survey_title']) ? sanitize_text_field(wp_unslash($_POST['miyuki_survey_title'])) : '',
+    'intro'     => isset($_POST['miyuki_survey_intro']) ? sanitize_textarea_field(wp_unslash($_POST['miyuki_survey_intro'])) : '',
+    'questions' => $questions,
+  ]);
+  if (is_wp_error($post_id)) {
+    wp_safe_redirect(add_query_arg('miyuki_survey_error', 'save', miyuki_voice_survey_admin_create_url()));
+    exit;
+  }
+
+  wp_safe_redirect(add_query_arg([
+    'miyuki_survey_message' => 'created',
+  ], miyuki_voice_survey_admin_detail_url($post_id)));
+  exit;
+}
+add_action('admin_post_miyuki_voice_survey_create', 'miyuki_handle_voice_survey_create');
+
+function miyuki_handle_voice_survey_update() {
+  if (!current_user_can('edit_posts')) {
+    wp_die('この操作を実行する権限がありません。');
+  }
+
+  $survey_id = isset($_POST['survey_id']) ? absint($_POST['survey_id']) : 0;
+  $survey = $survey_id ? get_post($survey_id) : null;
+  if (!$survey || $survey->post_type !== 'voice_survey') {
+    wp_die('アンケートが見つかりません。');
+  }
+
+  if (!isset($_POST['miyuki_voice_survey_update_nonce']) || !wp_verify_nonce($_POST['miyuki_voice_survey_update_nonce'], 'miyuki_voice_survey_update_' . $survey_id)) {
+    wp_die('不正な送信です。');
+  }
+
+  if (miyuki_voice_survey_meta($survey_id, 'submitted_at')) {
+    wp_safe_redirect(add_query_arg([
+      'miyuki_survey_error' => 'save',
+    ], miyuki_voice_survey_admin_detail_url($survey_id)));
+    exit;
+  }
+
+  $existing_questions = miyuki_get_voice_survey_questions($survey_id);
+  $questions = miyuki_sanitize_voice_survey_questions($_POST['miyuki_survey_question_labels'] ?? [], $existing_questions, $_POST['miyuki_survey_question_keys'] ?? []);
+  $title = isset($_POST['miyuki_survey_title']) ? sanitize_text_field(wp_unslash($_POST['miyuki_survey_title'])) : '';
+  if ($title === '') {
+    $title = get_the_title($survey_id);
+  }
+
+  wp_update_post([
+    'ID'         => $survey_id,
+    'post_title' => $title,
+  ]);
+  update_post_meta($survey_id, '_miyuki_survey_intro', isset($_POST['miyuki_survey_intro']) ? sanitize_textarea_field(wp_unslash($_POST['miyuki_survey_intro'])) : '');
+  miyuki_save_voice_survey_questions($survey_id, $questions);
+
+  wp_safe_redirect(add_query_arg([
+    'miyuki_survey_message' => 'updated',
+  ], miyuki_voice_survey_admin_detail_url($survey_id)));
+  exit;
+}
+add_action('admin_post_miyuki_voice_survey_update', 'miyuki_handle_voice_survey_update');
+
+function miyuki_handle_voice_survey_disable_url() {
+  if (!current_user_can('edit_posts')) {
+    wp_die('この操作を実行する権限がありません。');
+  }
+
+  $survey_id = isset($_POST['survey_id']) ? absint($_POST['survey_id']) : 0;
+  $survey = $survey_id ? get_post($survey_id) : null;
+  if (!$survey || $survey->post_type !== 'voice_survey') {
+    wp_die('アンケートが見つかりません。');
+  }
+
+  if (!isset($_POST['miyuki_voice_survey_disable_url_nonce']) || !wp_verify_nonce($_POST['miyuki_voice_survey_disable_url_nonce'], 'miyuki_voice_survey_disable_url_' . $survey_id)) {
+    wp_die('不正な送信です。');
+  }
+
+  miyuki_disable_voice_survey_url($survey_id);
+  wp_safe_redirect(add_query_arg([
+    'miyuki_survey_message' => 'disabled',
+  ], miyuki_voice_survey_admin_detail_url($survey_id)));
+  exit;
+}
+add_action('admin_post_miyuki_voice_survey_disable_url', 'miyuki_handle_voice_survey_disable_url');
+
+function miyuki_handle_voice_survey_reissue_url() {
+  if (!current_user_can('edit_posts')) {
+    wp_die('この操作を実行する権限がありません。');
+  }
+
+  $survey_id = isset($_POST['survey_id']) ? absint($_POST['survey_id']) : 0;
+  $survey = $survey_id ? get_post($survey_id) : null;
+  if (!$survey || $survey->post_type !== 'voice_survey') {
+    wp_die('アンケートが見つかりません。');
+  }
+
+  if (!isset($_POST['miyuki_voice_survey_reissue_url_nonce']) || !wp_verify_nonce($_POST['miyuki_voice_survey_reissue_url_nonce'], 'miyuki_voice_survey_reissue_url_' . $survey_id)) {
+    wp_die('不正な送信です。');
+  }
+
+  miyuki_reissue_voice_survey_url($survey_id);
+  wp_safe_redirect(add_query_arg([
+    'miyuki_survey_message' => 'reissued',
+  ], miyuki_voice_survey_admin_detail_url($survey_id)));
+  exit;
+}
+add_action('admin_post_miyuki_voice_survey_reissue_url', 'miyuki_handle_voice_survey_reissue_url');
+
+function miyuki_handle_voice_survey_print_sheet() {
+  if (!current_user_can('edit_posts')) {
+    wp_die('このページを表示する権限がありません。');
+  }
+
+  $survey_id = isset($_GET['survey_id']) ? absint($_GET['survey_id']) : 0;
+  $survey = $survey_id ? get_post($survey_id) : null;
+  if (!$survey || $survey->post_type !== 'voice_survey') {
+    wp_die('アンケートが見つかりません。');
+  }
+
+  if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'miyuki_voice_survey_print_sheet_' . $survey_id)) {
+    wp_die('不正なURLです。');
+  }
+
+  if (!miyuki_voice_survey_url_is_active($survey_id)) {
+    wp_die('回答URLが停止中です。先にURLを再発行してください。');
+  }
+
+  $token = miyuki_voice_survey_meta($survey_id, 'token');
+  $survey_url = miyuki_voice_survey_public_url($token);
+  $company_name = '有限会社ミユキハウジング';
+  $phone = '082-263-8066';
+  $logo_url = miyuki_schema_logo_url();
+  $detail_url = miyuki_voice_survey_admin_detail_url($survey_id);
+
+  nocache_headers();
+  header('Content-Type: text/html; charset=' . get_option('blog_charset'));
+  ?>
+  <!doctype html>
+  <html lang="ja">
+  <head>
+    <meta charset="<?php echo esc_attr(get_option('blog_charset')); ?>">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><?php echo esc_html(get_the_title($survey_id)); ?>｜アンケート用紙</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #e9eef2;
+        color: #13202f;
+        font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+        line-height: 1.7;
+      }
+
+      .miyuki-print-toolbar {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.94);
+        border-bottom: 1px solid #d6dee4;
+      }
+
+      .miyuki-print-toolbar button,
+      .miyuki-print-toolbar a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 38px;
+        padding: 0 16px;
+        border: 1px solid #1f5f7a;
+        border-radius: 6px;
+        background: #1f5f7a;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .miyuki-print-toolbar a {
+        background: #fff;
+        color: #1f5f7a;
+      }
+
+      .miyuki-survey-print-stage {
+        display: flex;
+        justify-content: center;
+        padding: 22px 0;
+      }
+
+      .miyuki-survey-print-sheet {
+        display: flex;
+        flex-direction: column;
+        width: 210mm;
+        height: 297mm;
+        margin: 0;
+        padding: 14mm 16mm 12mm;
+        overflow: hidden;
+        background: #fff;
+        box-shadow: 0 16px 50px rgba(15, 23, 42, 0.14);
+        transform-origin: top center;
+      }
+
+      .miyuki-survey-print-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14mm;
+        margin-bottom: 8mm;
+      }
+
+      .miyuki-survey-print-logo {
+        width: 28mm;
+        height: auto;
+      }
+
+      .miyuki-survey-print-company {
+        margin: 0;
+        color: #4b5563;
+        font-size: 9.5pt;
+        text-align: right;
+      }
+
+      .miyuki-survey-print-title {
+        margin: 0 0 6mm;
+        font-size: 22pt;
+        line-height: 1.35;
+        letter-spacing: 0;
+      }
+
+      .miyuki-survey-print-lead {
+        margin: 0 0 7mm;
+        color: #334155;
+        font-size: 11.5pt;
+        line-height: 1.85;
+      }
+
+      .miyuki-survey-print-guide {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4mm;
+        margin-bottom: 7mm;
+      }
+
+      .miyuki-survey-print-guide div {
+        min-height: 20mm;
+        padding: 4mm;
+        border: 1px solid #d9e2e8;
+        border-radius: 8px;
+        background: #f7fafc;
+      }
+
+      .miyuki-survey-print-guide strong {
+        display: block;
+        margin-bottom: 2mm;
+        color: #1f5f7a;
+        font-size: 9pt;
+      }
+
+      .miyuki-survey-print-guide span {
+        display: block;
+        color: #111827;
+        font-size: 10.5pt;
+        font-weight: 700;
+        line-height: 1.55;
+      }
+
+      .miyuki-survey-print-qr-area {
+        display: grid;
+        justify-items: center;
+        gap: 3mm;
+        margin: 2mm 0 6mm;
+        text-align: center;
+      }
+
+      .miyuki-survey-print-qr {
+        display: grid;
+        place-items: center;
+        width: 68mm;
+        height: 68mm;
+        padding: 3mm;
+        border: 1px solid #d9e2e8;
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      .miyuki-survey-print-qr canvas,
+      .miyuki-survey-print-qr img,
+      .miyuki-survey-print-qr table {
+        width: 60mm !important;
+        height: 60mm !important;
+      }
+
+      .miyuki-survey-print-qr span,
+      .miyuki-survey-print-qr p {
+        margin: 0;
+        color: #64748b;
+        font-size: 10pt;
+      }
+
+      .miyuki-survey-print-qr-caption {
+        margin: 0;
+        color: #111827;
+        font-size: 12pt;
+        font-weight: 700;
+      }
+
+      .miyuki-survey-print-url-block {
+        margin: 0 0 6mm;
+        padding: 3.5mm;
+        border-top: 1px solid #d9e2e8;
+        border-bottom: 1px solid #d9e2e8;
+      }
+
+      .miyuki-survey-print-url-block p {
+        margin: 0 0 2mm;
+        color: #4b5563;
+        font-size: 9.5pt;
+        font-weight: 700;
+      }
+
+      .miyuki-survey-print-url {
+        margin: 0;
+        color: #13202f;
+        font-size: 9pt;
+        line-height: 1.5;
+        word-break: break-all;
+      }
+
+      .miyuki-survey-print-footer {
+        margin-top: auto;
+        padding-top: 5mm;
+        border-top: 1px solid #d9e2e8;
+        color: #334155;
+      }
+
+      .miyuki-survey-print-thanks {
+        margin: 0 0 3mm;
+        font-size: 13pt;
+        font-weight: 700;
+      }
+
+      .miyuki-survey-print-footer dl {
+        display: grid;
+        grid-template-columns: 22mm minmax(0, 1fr);
+        gap: 1mm 4mm;
+        margin: 0;
+        font-size: 9.5pt;
+      }
+
+      .miyuki-survey-print-footer dt {
+        font-weight: 700;
+      }
+
+      .miyuki-survey-print-footer dd {
+        margin: 0;
+      }
+
+      @media print {
+        body {
+          background: #fff;
+        }
+
+        .miyuki-print-toolbar {
+          display: none;
+        }
+
+        .miyuki-survey-print-stage {
+          display: block;
+          padding: 0;
+        }
+
+        .miyuki-survey-print-sheet {
+          width: 210mm;
+          height: 297mm;
+          margin: 0;
+          box-shadow: none;
+          transform: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="miyuki-print-toolbar">
+      <button type="button" onclick="window.print();">この用紙を印刷</button>
+      <a href="<?php echo esc_url($detail_url); ?>">編集画面へ戻る</a>
+    </div>
+
+    <div class="miyuki-survey-print-stage">
+      <main class="miyuki-survey-print-sheet">
+        <header class="miyuki-survey-print-header">
+          <img class="miyuki-survey-print-logo" src="<?php echo esc_url($logo_url); ?>" alt="<?php echo esc_attr($company_name); ?>">
+          <p class="miyuki-survey-print-company">
+            <?php echo esc_html($company_name); ?><br>
+            TEL：<?php echo esc_html($phone); ?><br>
+            担当者名：＿＿＿＿＿＿＿＿
+          </p>
+        </header>
+
+        <h1 class="miyuki-survey-print-title">お客様アンケート<br>ご協力のお願い</h1>
+
+        <p class="miyuki-survey-print-lead">
+          このたびは弊社に工事をご依頼いただき、誠にありがとうございました。<br>
+          今後のサービス向上のため、アンケートへのご協力をお願いいたします。
+        </p>
+
+        <div class="miyuki-survey-print-guide">
+          <div>
+            <strong>回答時間</strong>
+            <span>1〜2分程度</span>
+          </div>
+          <div>
+            <strong>回答方法</strong>
+            <span>スマートフォンでQRコードを読み取りご回答ください</span>
+          </div>
+          <div>
+            <strong>お願い</strong>
+            <span>率直なご意見をお聞かせください</span>
+          </div>
+        </div>
+
+        <section class="miyuki-survey-print-qr-area" aria-label="アンケート回答QRコード">
+          <p class="miyuki-survey-print-qr-caption">こちらのQRコードからご回答ください</p>
+          <div id="miyukiSurveyPrintQr" class="miyuki-survey-print-qr" data-url="<?php echo esc_attr($survey_url); ?>">
+            <span>QRコードを読み込み中です</span>
+          </div>
+        </section>
+
+        <section class="miyuki-survey-print-url-block">
+          <p>QRコードが読み取れない場合はこちら</p>
+          <div class="miyuki-survey-print-url"><?php echo esc_html($survey_url); ?></div>
+        </section>
+
+        <footer class="miyuki-survey-print-footer">
+          <p class="miyuki-survey-print-thanks">ご協力ありがとうございます</p>
+          <dl>
+            <dt>会社名</dt>
+            <dd><?php echo esc_html($company_name); ?></dd>
+            <dt>電話番号</dt>
+            <dd><?php echo esc_html($phone); ?></dd>
+            <dt>担当者名</dt>
+            <dd>＿＿＿＿＿＿＿＿</dd>
+          </dl>
+        </footer>
+      </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>
+      (function () {
+        var target = document.getElementById('miyukiSurveyPrintQr');
+        var stage = document.querySelector('.miyuki-survey-print-stage');
+        var sheet = document.querySelector('.miyuki-survey-print-sheet');
+        if (!target) {
+          return;
+        }
+
+        var surveyUrl = target.getAttribute('data-url');
+        function fitPreview() {
+          if (!stage || !sheet || window.matchMedia('print').matches) {
+            return;
+          }
+
+          var scale = Math.min(1, (window.innerWidth - 32) / sheet.offsetWidth);
+          sheet.style.transform = 'scale(' + scale + ')';
+          stage.style.height = (sheet.offsetHeight * scale + 44) + 'px';
+        }
+
+        function showFallback() {
+          target.innerHTML = '<p>QRコードを生成できませんでした。下のURLをご利用ください。</p>';
+        }
+
+        function renderQr() {
+          if (!window.QRCode || !surveyUrl) {
+            showFallback();
+            return;
+          }
+
+          target.innerHTML = '';
+          new window.QRCode(target, {
+            text: surveyUrl,
+            width: 360,
+            height: 360,
+            colorDark: '#0f172a',
+            colorLight: '#ffffff',
+            correctLevel: window.QRCode.CorrectLevel.M
+          });
+        }
+
+        if (window.QRCode) {
+          renderQr();
+        } else {
+          window.addEventListener('load', renderQr);
+          window.setTimeout(function () {
+            if (!target.querySelector('canvas') && !target.querySelector('img') && !target.querySelector('table')) {
+              showFallback();
+            }
+          }, 3000);
+        }
+
+        fitPreview();
+        window.addEventListener('resize', fitPreview);
+        window.addEventListener('beforeprint', function () {
+          if (sheet) {
+            sheet.style.transform = '';
+          }
+          if (stage) {
+            stage.style.height = '';
+          }
+        });
+        window.addEventListener('afterprint', fitPreview);
+      }());
+    </script>
+  </body>
+  </html>
+  <?php
+  exit;
+}
+add_action('admin_post_miyuki_voice_survey_print_sheet', 'miyuki_handle_voice_survey_print_sheet');
+
+function miyuki_render_voice_survey_closed_page() {
+  status_header(410);
+  ?>
+  <main class="miyuki-survey-page">
+    <section class="miyuki-survey-shell">
+      <div class="miyuki-survey-complete">
+        <h2>このアンケートURLは終了しています</h2>
+        <p>回答済み、または受付が終了したURLです。再回答が必要な場合は、ミユキハウジングから新しいURLをお送りします。</p>
+      </div>
+    </section>
+  </main>
+  <?php
+}
+
+function miyuki_maybe_render_voice_survey_public_page() {
+  if (empty($_GET['miyuki_survey'])) {
+    return;
+  }
+
+  $token  = sanitize_text_field(wp_unslash($_GET['miyuki_survey']));
+  $survey = miyuki_get_voice_survey_by_token($token);
+
+  if (!$survey) {
+    status_header(404);
+    get_header();
+    echo '<main class="miyuki-survey-page"><section class="miyuki-survey-shell"><h1>アンケートが見つかりません</h1><p>URLをご確認ください。</p></section></main>';
+    get_footer();
+    exit;
+  }
+
+  if (!miyuki_voice_survey_url_is_active($survey->ID)) {
+    get_header();
+    miyuki_render_voice_survey_closed_page();
+    get_footer();
+    exit;
+  }
+
+  get_header();
+  miyuki_render_voice_survey_public_form($survey);
+  get_footer();
+  exit;
+}
+add_action('template_redirect', 'miyuki_maybe_render_voice_survey_public_page');
+
+function miyuki_render_voice_survey_public_form($survey) {
+  $survey_id    = absint($survey->ID);
+  $token        = miyuki_voice_survey_meta($survey_id, 'token');
+  $submitted_at = miyuki_voice_survey_meta($survey_id, 'submitted_at');
+  $is_complete  = !empty($_GET['submitted']) || ($submitted_at && !miyuki_voice_survey_form_is_open($survey_id));
+  $intro        = miyuki_voice_survey_meta($survey_id, 'intro', 'ご回答内容は確認後に社内で管理します。許可なくホームページに公開されることはありません。');
+  $questions    = miyuki_get_voice_survey_questions($survey_id);
+  ?>
+  <main class="miyuki-survey-page">
+    <section class="miyuki-survey-shell">
+      <div class="miyuki-survey-heading">
+        <p>MIYUKI HOUSING</p>
+        <h1><?php echo esc_html(get_the_title($survey_id)); ?></h1>
+        <span><?php echo nl2br(esc_html($intro)); ?></span>
+      </div>
+
+      <?php if ($is_complete) : ?>
+        <div class="miyuki-survey-complete">
+          <h2>ご回答ありがとうございました</h2>
+          <p>内容を確認し、今後の住まいづくりに活用させていただきます。</p>
+        </div>
+      <?php else : ?>
+        <form class="miyuki-survey-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
+          <?php wp_nonce_field('miyuki_voice_survey_submit_' . $token, 'miyuki_voice_survey_nonce'); ?>
+          <input type="hidden" name="action" value="miyuki_voice_survey_submit">
+          <input type="hidden" name="survey_id" value="<?php echo esc_attr($survey_id); ?>">
+          <input type="hidden" name="survey_token" value="<?php echo esc_attr($token); ?>">
+
+          <section class="miyuki-survey-card">
+            <h2>基本情報</h2>
+            <div class="miyuki-survey-grid">
+              <label>お名前・イニシャル
+                <input type="text" name="miyuki_survey_customer_name" required placeholder="例：K様">
+              </label>
+              <label>エリア
+                <input type="text" name="miyuki_survey_customer_area" placeholder="例：広島市東区">
+              </label>
+              <label>ご連絡先（社内確認用）
+                <input type="text" name="miyuki_survey_customer_contact" placeholder="メールまたは電話番号">
+              </label>
+              <label>工事内容
+                <select name="miyuki_survey_category">
+                  <option value="">選択してください</option>
+                  <?php foreach (miyuki_voice_category_options() as $category) : ?>
+                    <option value="<?php echo esc_attr($category); ?>"><?php echo esc_html($category); ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </label>
+              <label>満足度
+                <select name="miyuki_survey_satisfaction">
+                  <option value="">選択してください</option>
+                  <option value="5">5 とても満足</option>
+                  <option value="4">4 満足</option>
+                  <option value="3">3 普通</option>
+                  <option value="2">2 やや不満</option>
+                  <option value="1">1 不満</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="miyuki-survey-card">
+            <h2>一言コメント</h2>
+            <textarea name="miyuki_survey_quote" rows="4" placeholder="例：相談しやすく、安心して家づくりを進められました。"></textarea>
+          </section>
+
+          <?php foreach ($questions as $question) : ?>
+            <?php
+            $key = sanitize_key($question['key']);
+            $label = $question['label'];
+            ?>
+            <section class="miyuki-survey-card">
+              <h2><?php echo esc_html($label); ?></h2>
+              <textarea name="miyuki_survey_answer[<?php echo esc_attr($key); ?>]" rows="5" placeholder="自由にご記入ください。"></textarea>
+              <label class="miyuki-survey-file">写真を追加（任意・複数可）
+                <input type="file" name="miyuki_survey_question_<?php echo esc_attr($key); ?>_images[]" accept="image/*,.heic,.heif" multiple>
+              </label>
+            </section>
+          <?php endforeach; ?>
+
+          <section class="miyuki-survey-card">
+            <h2>その他の写真</h2>
+            <label class="miyuki-survey-file">掲載候補の写真をまとめて追加できます
+              <input type="file" name="miyuki_survey_gallery_images[]" accept="image/*,.heic,.heif" multiple>
+            </label>
+          </section>
+
+          <section class="miyuki-survey-card">
+            <h2>掲載許可</h2>
+            <p>チェックがない場合でもアンケートは送信できます。ホームページ掲載は、許可をいただいた内容だけ確認後に使用します。</p>
+            <div class="miyuki-survey-checks">
+              <label><input type="checkbox" name="miyuki_survey_publish_permission" value="1"> ホームページへの掲載を許可します</label>
+              <label><input type="checkbox" name="miyuki_survey_photo_permission" value="1"> 写真の掲載を許可します</label>
+              <label><input type="checkbox" name="miyuki_survey_name_permission" value="1"> お名前・イニシャルの掲載を許可します</label>
+            </div>
+          </section>
+
+          <button type="submit" class="miyuki-survey-submit">送信する</button>
+        </form>
+      <?php endif; ?>
+    </section>
+  </main>
+  <?php
+}
+
+function miyuki_handle_voice_survey_file_group($field_name, $post_id) {
+  if (empty($_FILES[$field_name]['name']) || !is_array($_FILES[$field_name]['name'])) {
+    return [];
+  }
+
+  require_once ABSPATH . 'wp-admin/includes/file.php';
+  require_once ABSPATH . 'wp-admin/includes/media.php';
+  require_once ABSPATH . 'wp-admin/includes/image.php';
+
+  $files = $_FILES[$field_name];
+  $attachment_ids = [];
+
+  foreach ($files['name'] as $index => $name) {
+    if ($name === '' || (int) $files['error'][$index] === UPLOAD_ERR_NO_FILE) {
+      continue;
+    }
+
+    if ((int) $files['error'][$index] !== UPLOAD_ERR_OK) {
+      continue;
+    }
+
+    $_FILES['miyuki_survey_upload'] = [
+      'name'     => $files['name'][$index],
+      'type'     => $files['type'][$index],
+      'tmp_name' => $files['tmp_name'][$index],
+      'error'    => $files['error'][$index],
+      'size'     => $files['size'][$index],
+    ];
+
+    $attachment_id = media_handle_upload('miyuki_survey_upload', $post_id);
+    if (!is_wp_error($attachment_id)) {
+      $attachment_ids[] = absint($attachment_id);
+    }
+  }
+
+  unset($_FILES['miyuki_survey_upload']);
+  return $attachment_ids;
+}
+
+function miyuki_handle_voice_survey_submit() {
+  $survey_id = isset($_POST['survey_id']) ? absint($_POST['survey_id']) : 0;
+  $token     = isset($_POST['survey_token']) ? sanitize_text_field(wp_unslash($_POST['survey_token'])) : '';
+  $survey    = $survey_id ? get_post($survey_id) : null;
+
+  if (!$survey || $survey->post_type !== 'voice_survey' || miyuki_voice_survey_meta($survey_id, 'token') !== $token) {
+    wp_die('アンケートが見つかりません。');
+  }
+
+  if (!isset($_POST['miyuki_voice_survey_nonce']) || !wp_verify_nonce($_POST['miyuki_voice_survey_nonce'], 'miyuki_voice_survey_submit_' . $token)) {
+    wp_die('不正な送信です。');
+  }
+
+  if (!miyuki_voice_survey_form_is_open($survey_id)) {
+    wp_safe_redirect(add_query_arg('submitted', '1', miyuki_voice_survey_public_url($token)));
+    exit;
+  }
+
+  $fields = [
+    'customer_name'    => 'sanitize_text_field',
+    'customer_area'    => 'sanitize_text_field',
+    'customer_contact' => 'sanitize_text_field',
+    'category'         => 'sanitize_text_field',
+    'satisfaction'     => 'sanitize_text_field',
+    'quote'            => 'sanitize_textarea_field',
+  ];
+
+  foreach ($fields as $key => $sanitize_callback) {
+    $post_key = 'miyuki_survey_' . $key;
+    $value = isset($_POST[$post_key]) ? call_user_func($sanitize_callback, wp_unslash($_POST[$post_key])) : '';
+    update_post_meta($survey_id, miyuki_voice_survey_meta_key($key), $value);
+  }
+
+  $answers = isset($_POST['miyuki_survey_answer']) && is_array($_POST['miyuki_survey_answer']) ? wp_unslash($_POST['miyuki_survey_answer']) : [];
+  foreach (miyuki_get_voice_survey_questions($survey_id) as $question) {
+    $key = sanitize_key($question['key']);
+    $legacy_post_key = 'miyuki_survey_' . $key;
+    $answer = isset($answers[$key]) ? sanitize_textarea_field($answers[$key]) : '';
+    if ($answer === '' && isset($_POST[$legacy_post_key])) {
+      $answer = sanitize_textarea_field(wp_unslash($_POST[$legacy_post_key]));
+    }
+    update_post_meta($survey_id, miyuki_voice_survey_meta_key($key), $answer);
+
+    $image_ids = miyuki_handle_voice_survey_file_group('miyuki_survey_question_' . $key . '_images', $survey_id);
+    if (empty($image_ids)) {
+      $image_ids = miyuki_handle_voice_survey_file_group($legacy_post_key . '_images', $survey_id);
+    }
+    if (!empty($image_ids)) {
+      update_post_meta($survey_id, miyuki_voice_survey_image_meta_key($key), implode(',', $image_ids));
+    }
+  }
+
+  $gallery_ids = miyuki_handle_voice_survey_file_group('miyuki_survey_gallery_images', $survey_id);
+  if (!empty($gallery_ids)) {
+    update_post_meta($survey_id, '_miyuki_survey_gallery_ids', implode(',', $gallery_ids));
+  }
+
+  update_post_meta($survey_id, '_miyuki_survey_publish_permission', !empty($_POST['miyuki_survey_publish_permission']) ? '1' : '0');
+  update_post_meta($survey_id, '_miyuki_survey_photo_permission', !empty($_POST['miyuki_survey_photo_permission']) ? '1' : '0');
+  update_post_meta($survey_id, '_miyuki_survey_name_permission', !empty($_POST['miyuki_survey_name_permission']) ? '1' : '0');
+  update_post_meta($survey_id, '_miyuki_survey_submitted_at', current_time('mysql'));
+  delete_post_meta($survey_id, '_miyuki_survey_reissued_at');
+
+  $customer_name = miyuki_voice_survey_meta($survey_id, 'customer_name', 'お客様');
+  wp_update_post([
+    'ID'          => $survey_id,
+    'post_status' => 'pending',
+    'post_title'  => 'アンケート回答 - ' . $customer_name . ' - ' . current_time('Y.m.d'),
+  ]);
+
+  wp_safe_redirect(add_query_arg('submitted', '1', miyuki_voice_survey_public_url($token)));
+  exit;
+}
+add_action('admin_post_miyuki_voice_survey_submit', 'miyuki_handle_voice_survey_submit');
+add_action('admin_post_nopriv_miyuki_voice_survey_submit', 'miyuki_handle_voice_survey_submit');
+
+function miyuki_voice_survey_make_voice_title($survey_id) {
+  $quote = miyuki_voice_survey_meta($survey_id, 'quote');
+  if ($quote !== '') {
+    return function_exists('mb_substr') && function_exists('mb_strlen') && mb_strlen($quote) > 34 ? mb_substr($quote, 0, 34) . '...' : $quote;
+  }
+
+  $area = miyuki_voice_survey_meta($survey_id, 'customer_area');
+  $name = miyuki_voice_survey_meta($survey_id, 'customer_name', 'お客様');
+  return trim(($area ? $area . ' ' : '') . $name . 'の声');
+}
+
+function miyuki_create_voice_from_survey($survey_id) {
+  if (!miyuki_voice_survey_bool($survey_id, 'publish_permission')) {
+    return new WP_Error('permission_denied', 'HP掲載許可がありません。');
+  }
+
+  $photo_allowed = miyuki_voice_survey_bool($survey_id, 'photo_permission');
+  $name_allowed  = miyuki_voice_survey_bool($survey_id, 'name_permission');
+  $main_image_id = 0;
+  $gallery_ids   = $photo_allowed ? miyuki_get_voice_survey_gallery_ids($survey_id) : [];
+  $voice_keys    = array_keys(miyuki_voice_question_labels());
+
+  $data = [
+    'customer_name'   => $name_allowed ? miyuki_voice_survey_meta($survey_id, 'customer_name') : '匿名希望',
+    'customer_area'   => miyuki_voice_survey_meta($survey_id, 'customer_area'),
+    'category'        => miyuki_voice_survey_meta($survey_id, 'category'),
+    'quote'           => miyuki_voice_survey_meta($survey_id, 'quote'),
+    'problem'         => '',
+    'reason'          => '',
+    'good'            => '',
+    'after'           => '',
+    'image_id'        => 0,
+    'gallery_raw'     => '',
+    'related_work_id' => 0,
+  ];
+
+  foreach (miyuki_voice_question_labels() as $key => $label) {
+    $data[$key . '_label'] = $label;
+    $data[$key . '_image_ids_raw'] = '';
+  }
+
+  $extra_answers = [];
+  $extra_images = [];
+  foreach (miyuki_get_voice_survey_questions($survey_id) as $index => $question) {
+    $survey_key = sanitize_key($question['key']);
+    $label = $question['label'];
+    $answer = miyuki_voice_survey_meta($survey_id, $survey_key);
+    $image_ids = $photo_allowed ? miyuki_get_voice_survey_question_image_ids($survey_id, $survey_key) : [];
+
+    if ($index < count($voice_keys)) {
+      $voice_key = $voice_keys[$index];
+      $data[$voice_key] = $answer;
+      $data[$voice_key . '_label'] = $label;
+      $data[$voice_key . '_image_ids_raw'] = implode(',', $image_ids);
+    } else {
+      if ($answer !== '') {
+        $extra_answers[] = '【' . $label . "】\n" . $answer;
+      }
+      $extra_images = array_merge($extra_images, $image_ids);
+    }
+
+    if (!$main_image_id && !empty($image_ids)) {
+      $main_image_id = $image_ids[0];
+    }
+  }
+
+  if (!empty($extra_answers)) {
+    $extra_text = implode("\n\n", $extra_answers);
+    if ($data['after'] !== '') {
+      $data['after'] .= "\n\n" . $extra_text;
+    } else {
+      $data['after'] = $extra_text;
+      $data['after_label'] = 'その他のご回答';
+    }
+  }
+
+  if (!empty($extra_images)) {
+    $gallery_ids = array_merge($gallery_ids, $extra_images);
+  }
+
+  if (!$main_image_id && !empty($gallery_ids)) {
+    $main_image_id = $gallery_ids[0];
+  }
+  $data['image_id'] = $main_image_id;
+  $data['gallery_raw'] = $photo_allowed ? implode(',', array_values(array_unique(array_map('absint', $gallery_ids)))) : '';
+
+  $voice_id = wp_insert_post([
+    'post_type'    => 'voice',
+    'post_status'  => 'draft',
+    'post_title'   => miyuki_voice_survey_make_voice_title($survey_id),
+    'post_content' => miyuki_voice_build_content($data),
+    'post_excerpt' => $data['quote'],
+    'menu_order'   => miyuki_get_next_voice_menu_order(),
+  ], true);
+
+  if (is_wp_error($voice_id)) {
+    return $voice_id;
+  }
+
+  miyuki_update_voice_template_fields($voice_id, $data);
+  update_post_meta($survey_id, '_miyuki_survey_converted_voice_id', absint($voice_id));
+
+  return absint($voice_id);
+}
+
+function miyuki_handle_voice_survey_convert() {
+  if (!current_user_can('edit_posts')) {
+    wp_die('この操作を実行する権限がありません。');
+  }
+
+  $survey_id = isset($_POST['survey_id']) ? absint($_POST['survey_id']) : 0;
+  $survey = $survey_id ? get_post($survey_id) : null;
+  if (!$survey || $survey->post_type !== 'voice_survey') {
+    wp_die('アンケートが見つかりません。');
+  }
+
+  if (!isset($_POST['miyuki_voice_survey_convert_nonce']) || !wp_verify_nonce($_POST['miyuki_voice_survey_convert_nonce'], 'miyuki_voice_survey_convert_' . $survey_id)) {
+    wp_die('不正な送信です。');
+  }
+
+  $voice_id = miyuki_create_voice_from_survey($survey_id);
+  if (is_wp_error($voice_id)) {
+    $error = $voice_id->get_error_code() === 'permission_denied' ? 'convert_permission' : 'save';
+    wp_safe_redirect(add_query_arg([
+      'miyuki_survey_error' => $error,
+    ], miyuki_voice_survey_admin_detail_url($survey_id)));
+    exit;
+  }
+
+  wp_safe_redirect(add_query_arg([
+    'from_survey'           => $survey_id,
+    'miyuki_survey_message' => 'converted',
+  ], miyuki_voice_easy_edit_url($voice_id)));
+  exit;
+}
+add_action('admin_post_miyuki_voice_survey_convert', 'miyuki_handle_voice_survey_convert');
 
 
 /* ============================================================

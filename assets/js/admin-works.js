@@ -601,6 +601,98 @@
     handleBodyEditorDrop(event, $(this).attr('data-body-editor-id'));
   });
 
+  function refreshSurveyQuestionNumbers($builder) {
+    $builder.find('.miyuki-survey-question-edit-card').each(function (index) {
+      $(this).find('.miyuki-survey-question-edit-head span').text('設問 ' + (index + 1));
+    });
+
+    var count = $builder.find('.miyuki-survey-question-edit-card').length;
+    $builder.find('.miyuki-survey-question-note').toggle(count <= 1);
+  }
+
+  function addSurveyQuestion($builder) {
+    var nextIndex = parseInt($builder.attr('data-next-index'), 10);
+    var template = $builder.find('.miyuki-survey-question-template').html();
+
+    if (!nextIndex || Number.isNaN(nextIndex)) {
+      nextIndex = $builder.find('.miyuki-survey-question-edit-card').length + 1;
+    }
+
+    if (!template) {
+      return;
+    }
+
+    var key = 'q' + Date.now() + '_' + nextIndex;
+    var html = template.replace(/__NUMBER__/g, nextIndex).replace(/__KEY__/g, key);
+    var $item = $(html);
+
+    $builder.find('.miyuki-survey-question-list-edit').append($item);
+    $builder.attr('data-next-index', nextIndex + 1);
+    refreshSurveyQuestionNumbers($builder);
+    $item.find('input[type="text"]').trigger('focus');
+  }
+
+  $(document).on('click', '.miyuki-survey-question-add', function () {
+    addSurveyQuestion($(this).closest('.miyuki-survey-question-builder'));
+  });
+
+  $(document).on('click', '.miyuki-survey-question-remove', function () {
+    var $builder = $(this).closest('.miyuki-survey-question-builder');
+    var $items = $builder.find('.miyuki-survey-question-edit-card');
+
+    if ($items.length <= 1) {
+      refreshSurveyQuestionNumbers($builder);
+      $items.first().find('input[type="text"]').trigger('focus');
+      return;
+    }
+
+    $(this).closest('.miyuki-survey-question-edit-card').remove();
+    refreshSurveyQuestionNumbers($builder);
+  });
+
+  function copyTextToClipboard(text) {
+    function fallbackCopy() {
+      var textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', 'readonly');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+
+      return $.Deferred().resolve().promise();
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(fallbackCopy);
+    }
+
+    return fallbackCopy();
+  }
+
+  $(document).on('click', '.miyuki-survey-copy-url', function () {
+    var button = this;
+    var text = $(button).closest('.miyuki-survey-url-copy').find('input').val();
+
+    if (!text) {
+      return;
+    }
+
+    copyTextToClipboard(text).then(function () {
+      var original = button.textContent;
+      button.textContent = 'コピー済み';
+      setTimeout(function () {
+        button.textContent = original;
+      }, 1600);
+    });
+  });
+
+  $('.miyuki-survey-question-builder').each(function () {
+    refreshSurveyQuestionNumbers($(this));
+  });
+
   setupBodyEditorDrops();
   setTimeout(setupBodyEditorDrops, 400);
   setTimeout(setupBodyEditorDrops, 1200);
