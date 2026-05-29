@@ -16,6 +16,21 @@ get_header(); ?>
 
       <div class="row">
         <div class="col-xl-10 mx-auto">
+          <figure class="company-main-visual">
+            <img
+              src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/company-office-20260528-v3.jpg"
+              alt="有限会社ミユキハウジングの店舗外観"
+              width="1448"
+              height="1086"
+              loading="eager"
+              decoding="async"
+              fetchpriority="high">
+          </figure>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-xl-10 mx-auto">
           <table class="company-table">
             <tbody>
               <tr>
@@ -40,7 +55,7 @@ get_header(); ?>
               </tr>
               <tr>
                 <th>メールアドレス</th>
-                <td><a href="mailto:m_mentenansu.i@helen.ocn.ne.jp">m_mentenansu.i@helen.ocn.ne.jp</a></td>
+                <td><?php echo miyuki_obfuscated_email_link(); ?></td>
               </tr>
               <tr>
                 <th>対応エリア</th>

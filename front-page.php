@@ -98,7 +98,7 @@
             <div class="news-card-image">
   <?php
   $thumb_url = has_post_thumbnail()
-    ? get_the_post_thumbnail_url( get_the_ID(), 'medium' )
+    ? get_the_post_thumbnail_url( get_the_ID(), 'large' )
     : get_first_image_from_content( get_the_ID() );
   ?>
   <img src="<?= esc_url( $thumb_url ?: get_stylesheet_directory_uri() . '/assets/images/no-image.svg' ) ?>"
@@ -385,7 +385,7 @@ if ($location) : ?>
         </div>
         <div class="col-md-6">
           <div class="about-image">
-            <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/about-01.jpg"
+            <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/about-top2.png"
                  alt="代表写真または会社外観"
                  style="width:100%; height:100%; object-fit:cover; border-radius:1.5rem;">
           </div>

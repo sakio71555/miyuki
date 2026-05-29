@@ -19,6 +19,8 @@ $no_image = get_template_directory_uri() . '/assets/images/no-image.svg';
 $thumb_url = has_post_thumbnail()
   ? get_the_post_thumbnail_url( get_the_ID(), 'large' )
   : get_first_image_from_content( get_the_ID() );
+$event_content = trim( get_the_content(null, false, get_the_ID()) );
+$event_excerpt = get_the_excerpt();
 ?>
 <main id="main" class="site-main event-single-page">
 <!-- ページタイトル -->
@@ -91,9 +93,15 @@ $thumb_url = has_post_thumbnail()
       </div>
 
       <!-- 本文 -->
+      <?php if ( $event_content !== '' || $event_excerpt !== '' ) : ?>
       <div class="event-single-content">
-        <?php the_content(); ?>
+        <?php if ( $event_content !== '' ) : ?>
+          <?php the_content(); ?>
+        <?php else : ?>
+          <?php echo wpautop( esc_html( $event_excerpt ) ); ?>
+        <?php endif; ?>
       </div>
+      <?php endif; ?>
 
       <!-- 申込みボタン（開催予定のみ表示） -->
       <?php if ( ! $is_past ) : ?>

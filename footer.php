@@ -53,7 +53,7 @@
         <ul class="footer-contact">
           <li>TEL: 082-263-8066</li>
           <li>FAX: 082-263-8067</li>
-          <li>Email: m_mentenansu.i@helen.ocn.ne.jp</li>
+          <li>Email: <?php echo miyuki_obfuscated_email_link(); ?></li>
           <li>〒732-0045<br>広島県広島市東区曙5丁目4-6</li>
         </ul>
       </div>

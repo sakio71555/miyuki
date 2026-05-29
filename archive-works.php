@@ -15,6 +15,7 @@ $works_categories = get_terms([
   'taxonomy'   => 'works_category',
   'hide_empty' => true,
 ]);
+$works_categories = miyuki_sort_works_categories($works_categories);
 ?>
 <?php if (!empty($works_categories) && !is_wp_error($works_categories)) : ?>
   <div class="filter-buttons">
@@ -33,12 +34,13 @@ $works_categories = get_terms([
             <?php
             $cats = get_the_terms(get_the_ID(), 'works_category');
             $cat_slug = ($cats && !is_wp_error($cats)) ? $cats[0]->slug : '';
+            $works_image = miyuki_render_works_image(get_the_ID(), 'large', ['loading' => 'lazy']);
             ?>
             <div class="col-lg-4 col-md-6" data-category="<?php echo esc_attr($cat_slug); ?>">
               <a href="<?php the_permalink(); ?>" class="works-card">
                 <div class="works-card-image">
-                  <?php if (has_post_thumbnail()) : ?>
-                    <?php the_post_thumbnail('large', ['loading' => 'lazy']); ?>
+                  <?php if ($works_image) : ?>
+                    <?php echo $works_image; ?>
                   <?php else : ?>
                     <?php $first_img = get_first_image_from_content(get_the_ID()); ?>
                     <?php if ($first_img) : ?>

@@ -26,7 +26,7 @@ get_header(); ?>
     <!-- 上段：写真左・テキスト右 -->
     <div class="about-row">
       <div class="about-photo">
-        <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/about-01.jpg"
+        <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/about-011.jpg"
              alt="ミユキハウジング ショールーム">
       </div>
       <div class="about-texts">
@@ -52,7 +52,7 @@ get_header(); ?>
     <!-- 下段：テキスト左・写真右 -->
     <div class="about-row about-row-reverse">
       <div class="about-photo">
-        <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/about-02.jpg"
+        <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/about-021.jpg"
              alt="ミユキハウジング スタッフ打ち合わせ">
       </div>
       <div class="about-texts">
@@ -221,14 +221,11 @@ get_header(); ?>
 
       <div class="flow-step">
         <div class="flow-step-illust">
-          <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/flow-01.svg"
-               alt="はじめましてから始まります"
-               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-          <div class="flow-step-illust-dummy" style="display:none">
-            <span>挿絵①</span>
-          </div>
+          <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/flow_01.jpg"
+               alt="まずはご相談から始まります"
+               loading="lazy">
+          <span class="flow-step-number-overlay">01</span>
         </div>
-        <div class="flow-step-number">01</div>
         <div class="flow-step-content">
           <h3 class="flow-step-title">まずはご相談から始まります</h3>
           <p class="flow-step-text">「建物を直したい」「今の空間をもう少し使いやすくしたい」<br>
@@ -241,14 +238,11 @@ get_header(); ?>
 
       <div class="flow-step">
         <div class="flow-step-illust">
-          <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/flow-02.svg"
+          <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/flow_04.jpg"
                alt="暮らしのお話を聞かせてください"
-               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-          <div class="flow-step-illust-dummy" style="display:none">
-            <span>挿絵②</span>
-          </div>
+               loading="lazy">
+          <span class="flow-step-number-overlay">02</span>
         </div>
-        <div class="flow-step-number">02</div>
         <div class="flow-step-content">
           <h3 class="flow-step-title">暮らしのお話を聞かせてください</h3>
           <p class="flow-step-text">どんな毎日を過ごしたいのか、今どんなことに困っているのか。<br>
@@ -261,14 +255,11 @@ get_header(); ?>
 
       <div class="flow-step">
         <div class="flow-step-illust">
-          <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/flow-03.svg"
+          <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/flow_03.jpg"
                alt="ご提案（プラン・アイデア）"
-               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-          <div class="flow-step-illust-dummy" style="display:none">
-            <span>挿絵③</span>
-          </div>
+               loading="lazy">
+          <span class="flow-step-number-overlay">03</span>
         </div>
-        <div class="flow-step-number">03</div>
         <div class="flow-step-content">
           <h3 class="flow-step-title">ご提案（プラン・アイデア）</h3>
           <p class="flow-step-text">お聞きした内容をもとに、プランや改善のアイデアをご提案します。<br>
@@ -281,14 +272,11 @@ get_header(); ?>
 
       <div class="flow-step">
         <div class="flow-step-illust">
-          <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/flow-04.svg"
+          <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/flow_02.jpg"
                alt="一緒に悩んで、一緒に決める"
-               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-          <div class="flow-step-illust-dummy" style="display:none">
-            <span>挿絵④</span>
-          </div>
+               loading="lazy">
+          <span class="flow-step-number-overlay">04</span>
         </div>
-        <div class="flow-step-number">04</div>
         <div class="flow-step-content">
           <h3 class="flow-step-title">一緒に悩んで、一緒に決める</h3>
           <p class="flow-step-text">「これでいいのかな？」と迷う時間も大切にしています。<br>
@@ -300,14 +288,11 @@ get_header(); ?>
 
       <div class="flow-step">
         <div class="flow-step-illust">
-          <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/flow-05.svg"
+          <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/flow_05.jpg"
                alt="安心できたらご契約へ"
-               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-          <div class="flow-step-illust-dummy" style="display:none">
-            <span>挿絵⑤</span>
-          </div>
+               loading="lazy">
+          <span class="flow-step-number-overlay">05</span>
         </div>
-        <div class="flow-step-number">05</div>
         <div class="flow-step-content">
           <h3 class="flow-step-title">安心できたらご契約へ</h3>
           <p class="flow-step-text">内容やご予算、進め方にご納得いただけましたらご契約となります。<br>

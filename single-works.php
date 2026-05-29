@@ -13,6 +13,15 @@
 
   <article class="section">
     <div class="container">
+      <?php
+      $post_id       = get_the_ID();
+      $cats          = get_the_terms($post_id, 'works_category');
+      $location      = get_post_meta($post_id, 'location', true);
+      $lead          = get_post_meta($post_id, '_miyuki_works_lead', true);
+      $main_image    = miyuki_render_works_image($post_id, 'full', ['loading' => 'eager']);
+      $gallery_ids   = miyuki_get_works_gallery_ids($post_id);
+      $has_content   = trim(strip_tags(get_the_content())) !== '';
+      ?>
 
       <!-- パンくずリスト -->
       <nav class="works-breadcrumb">
@@ -21,34 +30,54 @@
   <a href="<?php echo esc_url(get_post_type_archive_link('works')); ?>">施工事例</a>
 </nav>
 
-      <!-- メインビジュアル -->
-      <?php if (has_post_thumbnail()) : ?>
-        <div class="works-hero-image">
-          <?php the_post_thumbnail('full', ['loading' => 'eager']); ?>
+      <!-- メイン画像・タイトル・説明文 -->
+      <div class="works-detail-visual<?php echo $main_image ? '' : ' works-detail-visual-no-image'; ?>">
+        <?php if ($main_image) : ?>
+          <div class="works-detail-main-image">
+            <?php echo $main_image; ?>
+          </div>
+        <?php endif; ?>
+
+        <div class="works-detail-intro">
+          <p class="works-detail-en">WORKS</p>
+
+          <?php if ($cats && !is_wp_error($cats)) : ?>
+            <span class="works-meta-category"><?php echo esc_html($cats[0]->name); ?></span>
+          <?php endif; ?>
+
+          <h1 class="works-detail-title"><?php the_title(); ?></h1>
+
+          <?php if ($location) : ?>
+            <p class="works-detail-location"><?php echo esc_html($location); ?></p>
+          <?php endif; ?>
+
+          <?php if ($lead) : ?>
+            <div class="works-detail-lead">
+              <?php echo wpautop(esc_html($lead)); ?>
+            </div>
+          <?php endif; ?>
         </div>
-      <?php endif; ?>
-
-      <!-- タイトル・メタ情報 -->
-      <div class="works-meta">
-        <?php
-        $cats = get_the_terms(get_the_ID(), 'works_category');
-        if ($cats && !is_wp_error($cats)) : ?>
-          <span class="works-meta-category"><?php echo esc_html($cats[0]->name); ?></span>
-        <?php endif; ?>
-
-        <h1 class="works-detail-title"><?php the_title(); ?></h1>
-
-        <?php
-        $location = get_post_meta(get_the_ID(), 'location', true);
-        if ($location) : ?>
-          <p class="works-detail-location"><?php echo esc_html($location); ?></p>
-        <?php endif; ?>
       </div>
 
       <!-- 本文 -->
-      <div class="works-content">
-        <?php the_content(); ?>
-      </div>
+      <?php if ($has_content) : ?>
+        <div class="works-content">
+          <?php the_content(); ?>
+        </div>
+      <?php endif; ?>
+
+      <!-- ギャラリー -->
+      <?php if (!empty($gallery_ids)) : ?>
+        <div class="works-gallery-grid" aria-label="施工写真">
+          <?php foreach ($gallery_ids as $gallery_id) : ?>
+            <?php if (wp_attachment_is_image($gallery_id)) : ?>
+              <figure class="works-gallery-item">
+                <?php echo wp_get_attachment_image($gallery_id, 'large', false, ['loading' => 'lazy']); ?>
+              </figure>
+            <?php endif; ?>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
 
       <!-- 前後の投稿ナビ -->
       <div class="works-post-nav">

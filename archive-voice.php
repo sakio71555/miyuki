@@ -1,60 +1,49 @@
 <?php get_header(); ?>
-<!-- ページタイトル -->
+
 <div class="page-hero">
   <div class="container d-flex justify-content-between align-items-center">
     <span class="page-hero-en">Voice</span>
     <span class="page-hero-ja">お客様の声</span>
   </div>
 </div>
+
 <main>
-  <section class="section">
+  <section class="section voice-archive-section">
     <div class="container">
       <?php if (have_posts()) : ?>
-        <div class="row g-4">
+        <div class="voice-grid">
           <?php while (have_posts()) : the_post(); ?>
-            <div class="col-lg-4 col-md-6">
-              <div class="voice-card">
-                <!-- 写真クリックで個別ページへ -->
-                <a href="<?php the_permalink(); ?>" class="voice-card-image-link">
-                  <div class="voice-card-image">
-                    <?php if (has_post_thumbnail()) : ?>
-                      <?php the_post_thumbnail('large', ['loading' => 'lazy']); ?>
-                    <?php else : ?>
-                      <?php $first_img = get_first_image_from_content(get_the_ID()); ?>
-                      <?php if ($first_img) : ?>
-                        <img src="<?php echo esc_url($first_img); ?>"
-                             alt="<?php the_title_attribute(); ?>" loading="lazy">
-                      <?php else : ?>
-                        <img src="<?php echo esc_url(get_stylesheet_directory_uri()); ?>/assets/images/no-image-staff.svg"
-                             alt="No Image" loading="lazy">
-                      <?php endif; ?>
-                    <?php endif; ?>
-                  </div>
-                </a>
-                <div class="works-card-info voice-card-info">
-                  <?php
-                  $category = get_post_meta(get_the_ID(), 'customer_category', true);
-                  if ($category) : ?>
-                    <span class="voice-card-category"><?php echo esc_html($category); ?></span>
-                  <?php endif; ?>
-                  <h3 class="works-card-title"><?php the_title(); ?></h3>
-                  <?php
-                  $name = get_post_meta(get_the_ID(), 'customer_name', true);
-                  if ($name) : ?>
-                    <p class="works-card-location"><?php echo esc_html($name); ?></p>
-                  <?php endif; ?>
-                  <?php
-                  $excerpt = strip_tags(get_the_content());
-                  if ($excerpt) : ?>
-                    <p class="works-card-excerpt"><?php echo esc_html(mb_strimwidth($excerpt, 0, 150, '…')); ?></p>
-                  <?php endif; ?>
-                  <!-- 続きを見るリンク -->
-                  <a href="<?php the_permalink(); ?>" class="voice-read-more">続きを見る &rarr;</a>
+            <?php
+            $post_id  = get_the_ID();
+            $category = get_post_meta($post_id, 'customer_category', true);
+            $name     = get_post_meta($post_id, 'customer_name', true);
+            $area     = get_post_meta($post_id, 'customer_area', true);
+            $quote    = get_post_meta($post_id, 'customer_quote', true);
+            $excerpt  = $quote ?: get_the_excerpt();
+            ?>
+            <article class="voice-card">
+              <a href="<?php the_permalink(); ?>" class="voice-card-image-link">
+                <div class="voice-card-image">
+                  <?php echo miyuki_render_voice_image($post_id, 'large', ['loading' => 'lazy']) ?: miyuki_voice_placeholder_image(get_the_title()); ?>
                 </div>
+              </a>
+              <div class="voice-card-info">
+                <?php if ($category) : ?>
+                  <span class="voice-card-category"><?php echo esc_html($category); ?></span>
+                <?php endif; ?>
+                <h2 class="voice-card-title"><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h2>
+                <?php if ($name || $area) : ?>
+                  <p class="voice-card-name"><?php echo esc_html(trim(($name ?: '') . ($name && $area ? ' / ' : '') . ($area ?: ''))); ?></p>
+                <?php endif; ?>
+                <?php if ($excerpt) : ?>
+                  <p class="voice-card-comment"><?php echo esc_html(mb_strimwidth(wp_strip_all_tags($excerpt), 0, 150, '…')); ?></p>
+                <?php endif; ?>
+                <a href="<?php the_permalink(); ?>" class="voice-read-more">詳しく見る</a>
               </div>
-            </div>
+            </article>
           <?php endwhile; ?>
         </div>
+
         <div class="works-pagination">
           <?php
           the_posts_pagination([
@@ -70,4 +59,5 @@
     </div>
   </section>
 </main>
+
 <?php get_footer(); ?>

@@ -1,66 +1,67 @@
 <?php get_header(); ?>
-<!-- ページタイトル -->
-<div class="page-hero">
-  <div class="container d-flex justify-content-between align-items-center">
-    <span class="page-hero-en">News</span>
-    <span class="page-hero-ja">お知らせ</span>
-  </div>
-</div>
-<main>
 <?php if (have_posts()) : while (have_posts()) : the_post(); ?>
-<article class="section">
-  <div class="container">
-    <!-- パンくずリスト -->
-    <nav class="works-breadcrumb">
-  <a href="<?php echo esc_url(home_url('/')); ?>">TOP</a>
-  <span>/</span>
-  <a href="<?php echo esc_url(get_post_type_archive_link('news')); ?>">お知らせ</a>
-</nav>
-    <!-- タイトル・メタ情報 -->
-    <div class="works-meta">
-      <p class="works-meta-date"><?php echo get_the_date('Y.m.d'); ?></p>
-      <h1 class="works-detail-title"><?php the_title(); ?></h1>
-    </div>
-    <!-- アイキャッチ -->
-    <?php if (has_post_thumbnail()) : ?>
-    <div class="works-hero-image">
-      <?php the_post_thumbnail('full', ['loading' => 'eager']); ?>
-    </div>
-    <?php endif; ?>
-    <!-- 本文 -->
-    <div class="works-content">
-      <?php the_content(); ?>
-    </div>
-    <!-- 前後の投稿ナビ -->
-    <div class="works-post-nav">
-      <?php
-      $prev = get_previous_post();
-      $next = get_next_post();
-      ?>
-<div class="works-post-nav-prev">
-  <?php if ($prev) : ?>
-    <a href="<?php echo esc_url(get_permalink($prev)); ?>">
-      <span class="nav-label">&#8592; PREV</span>
-      <span class="nav-title nav-title-full"><?php echo esc_html($prev->post_title); ?></span>
-      <span class="nav-title nav-title-short"><?php echo esc_html(mb_strimwidth($prev->post_title, 0, 15, '…')); ?></span>
-    </a>
-  <?php endif; ?>
-</div>
-<a href="<?php echo esc_url(get_post_type_archive_link('news')); ?>" class="works-post-nav-index">
-  一覧へ戻る
-</a>
-<div class="works-post-nav-next">
-  <?php if ($next) : ?>
-    <a href="<?php echo esc_url(get_permalink($next)); ?>">
-      <span class="nav-label">NEXT &#8594;</span>
-      <span class="nav-title nav-title-full"><?php echo esc_html($next->post_title); ?></span>
-      <span class="nav-title nav-title-short"><?php echo esc_html(mb_strimwidth($next->post_title, 0, 15, '…')); ?></span>
-    </a>
-  <?php endif; ?>
-</div>
+<?php
+$news_content = trim(get_the_content(null, false, get_the_ID()));
+$news_excerpt = get_the_excerpt();
+$no_image = get_template_directory_uri() . '/assets/images/no-image.svg';
+$thumb_url = has_post_thumbnail()
+  ? get_the_post_thumbnail_url(get_the_ID(), 'large')
+  : (function_exists('get_first_image_from_content') ? get_first_image_from_content(get_the_ID()) : '');
+?>
+<main id="main" class="site-main event-single-page news-single-page">
+  <!-- ページタイトル -->
+  <div class="page-hero">
+    <div class="container d-flex justify-content-between align-items-center">
+      <span class="page-hero-en">News</span>
+      <span class="page-hero-ja">お知らせ</span>
     </div>
   </div>
-</article>
-<?php endwhile; endif; ?>
+
+  <div class="container py-5">
+    <div class="row">
+      <div class="col-lg-8 mx-auto">
+
+        <!-- パンくず -->
+        <nav class="event-breadcrumb mb-4">
+          <a href="<?php echo esc_url(home_url('/')); ?>">HOME</a>
+          <span>›</span>
+          <a href="<?php echo esc_url(get_post_type_archive_link('news')); ?>">お知らせ</a>
+          <span>›</span>
+          <span><?php echo esc_html(get_the_title()); ?></span>
+        </nav>
+
+        <p class="news-single-date"><?php echo esc_html(get_the_date('Y.m.d')); ?></p>
+
+        <!-- タイトル -->
+        <h1 class="event-single-title"><?php echo esc_html(get_the_title()); ?></h1>
+
+        <!-- アイキャッチ（本文1枚目 → no-image.svg にフォールバック） -->
+        <div class="event-single-thumb mb-4">
+          <img src="<?php echo esc_url($thumb_url ?: $no_image); ?>"
+               alt="<?php echo esc_attr(get_the_title()); ?>" loading="lazy">
+        </div>
+
+        <!-- 本文 -->
+        <?php if ($news_content !== '' || $news_excerpt !== '') : ?>
+          <div class="event-single-content">
+            <?php if ($news_content !== '') : ?>
+              <?php the_content(); ?>
+            <?php else : ?>
+              <?php echo wpautop(esc_html($news_excerpt)); ?>
+            <?php endif; ?>
+          </div>
+        <?php endif; ?>
+
+        <!-- 一覧に戻る -->
+        <div class="text-center mt-5">
+          <a href="<?php echo esc_url(get_post_type_archive_link('news')); ?>" class="btn-contact-back">
+            お知らせ一覧へ戻る
+          </a>
+        </div>
+
+      </div>
+    </div>
+  </div>
 </main>
+<?php endwhile; endif; ?>
 <?php get_footer(); ?>

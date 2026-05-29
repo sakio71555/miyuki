@@ -93,7 +93,7 @@ get_header();
             <strong>有限会社ミユキハウジング</strong><br>
             〒732-0045 広島市東区曙5丁目4-6<br>
             TEL：<a href="tel:0822638066">082-263-8066</a><br>
-            メール：<a href="mailto:m_mentenansu.i@helen.ocn.ne.jp">m_mentenansu.i@helen.ocn.ne.jp</a><br>
+            メール：<?php echo miyuki_obfuscated_email_link(); ?><br>
             受付時間：平日 8:30〜18:00
           </p>
         </div>

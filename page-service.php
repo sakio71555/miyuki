@@ -29,7 +29,7 @@ get_header(); ?>
           <li>お客様の予算に合わせた柔軟なプランニング</li>
           <li>アフターフォロー・定期点検も充実</li>
         </ul>
-<a href="<?php echo esc_url(miyuki_works_category_link('construction')); ?>"
+<a href="<?php echo esc_url(get_post_type_archive_link('works')); ?>"
    class="btn-service">施工事例を見る &rarr;</a>
       </div>
     </div>
@@ -53,7 +53,7 @@ get_header(); ?>
           <li>内装・外装・水回りの修繕相談</li>
           <li>使い勝手と予算に合わせた改修提案</li>
         </ul>
-<a href="<?php echo esc_url(miyuki_works_category_link('renovation')); ?>"
+<a href="<?php echo esc_url(get_post_type_archive_link('works')); ?>"
    class="btn-service">施工事例を見る &rarr;</a>
       </div>
     </div>
@@ -77,7 +77,7 @@ get_header(); ?>
           <li>建物清掃・クリーニング対応</li>
           <li>水回りのトラブルや定期点検のご提案</li>
         </ul>
-<a href="<?php echo esc_url(miyuki_works_category_link('maintenance')); ?>"
+<a href="<?php echo esc_url(get_post_type_archive_link('works')); ?>"
    class="btn-service">施工事例を見る &rarr;</a>
       </div>
     </div>
