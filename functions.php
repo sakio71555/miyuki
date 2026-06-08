@@ -1202,6 +1202,31 @@ function miyuki_production_home_url($path = '/') {
   return 'https://miyuki-housing.jp/miyuki-test' . '/' . ltrim($path, '/');
 }
 
+function miyuki_is_customer_public_access_request() {
+  $survey_token = isset($_GET['miyuki_survey']) ? sanitize_text_field(wp_unslash($_GET['miyuki_survey'])) : '';
+  if ($survey_token !== '') {
+    return true;
+  }
+
+  $works_preview_id = isset($_GET['miyuki_works_preview']) ? absint($_GET['miyuki_works_preview']) : 0;
+  $works_preview_key = isset($_GET['preview_key']) ? sanitize_text_field(wp_unslash($_GET['preview_key'])) : '';
+  if ($works_preview_id && $works_preview_key !== '') {
+    return true;
+  }
+
+  $posted_action = isset($_POST['action']) ? sanitize_key(wp_unslash($_POST['action'])) : '';
+  return $posted_action === 'miyuki_voice_survey_submit';
+}
+
+function miyuki_bypass_password_protected_for_customer_urls($is_active) {
+  if (miyuki_is_customer_public_access_request()) {
+    return false;
+  }
+
+  return $is_active;
+}
+add_filter('password_protected_is_active', 'miyuki_bypass_password_protected_for_customer_urls');
+
 function miyuki_allow_mobile_image_upload_mimes($mimes) {
   $mimes['heic'] = 'image/heic';
   $mimes['heif'] = 'image/heif';
@@ -4434,20 +4459,26 @@ function miyuki_get_voice_survey_by_token($token) {
     return null;
   }
 
-  $query = new WP_Query([
-    'post_type'      => 'voice_survey',
-    'post_status'    => ['draft', 'pending', 'private', 'publish'],
-    'posts_per_page' => 1,
-    'meta_key'       => '_miyuki_survey_token',
-    'meta_value'     => $token,
-    'no_found_rows'  => true,
-  ]);
+  global $wpdb;
+  $post_id = (int) $wpdb->get_var($wpdb->prepare(
+    "SELECT p.ID
+      FROM {$wpdb->posts} p
+      INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+      WHERE p.post_type = %s
+        AND p.post_status NOT IN ('trash', 'auto-draft')
+        AND pm.meta_key = %s
+        AND pm.meta_value = %s
+      LIMIT 1",
+    'voice_survey',
+    '_miyuki_survey_token',
+    $token
+  ));
 
-  if (!$query->have_posts()) {
+  if (!$post_id) {
     return null;
   }
 
-  return $query->posts[0];
+  return get_post($post_id);
 }
 
 function miyuki_create_voice_survey_post($data = []) {
@@ -4459,7 +4490,7 @@ function miyuki_create_voice_survey_post($data = []) {
 
   $post_id = wp_insert_post([
     'post_type'   => 'voice_survey',
-    'post_status' => 'draft',
+    'post_status' => 'publish',
     'post_title'  => $title,
   ], true);
 
@@ -5703,7 +5734,7 @@ function miyuki_handle_voice_survey_submit() {
   $customer_name = miyuki_voice_survey_meta($survey_id, 'customer_name', 'お客様');
   wp_update_post([
     'ID'          => $survey_id,
-    'post_status' => 'pending',
+    'post_status' => 'publish',
     'post_title'  => 'アンケート回答 - ' . $customer_name . ' - ' . current_time('Y.m.d'),
   ]);
 
